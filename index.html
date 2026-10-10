@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Klar Glas – Intern</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#fffefc" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Klar Glas" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon-180.png" />
+    <link rel="preload" href="figtree-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <header class="kopf">
+      <a class="marke" href="#uebersicht" aria-label="Klar Glas – Übersicht">
+        <svg class="marke__zeichen" viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="2.5" y="2.5" width="27" height="27" rx="4" fill="none" stroke="#010F2B" stroke-width="2.4" />
+          <path d="M16 3v26M3 16h26" stroke="#010F2B" stroke-width="2.4" />
+          <path d="M6.5 25.5 25.5 6.5" stroke="#2B5CFF" stroke-width="3.2" stroke-linecap="round" />
+          <circle cx="9.6" cy="9.6" r="2.1" fill="#010F2B" />
+        </svg>
+        <span class="marke__wort"><b>Klar</b>Glas</span>
+        <span class="marke__zusatz">intern</span>
+      </a>
+      <a class="kopf__zeiten" href="#zeiten" title="Wann wir können">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+        <span class="kopf__zeiten-kurz">Zeiten</span>
+        <span class="kopf__zeiten-lang">Wann wir können</span>
+      </a>
+      <nav class="nav" aria-label="Bereiche" data-nav>
+        <a href="#uebersicht" data-ziel="uebersicht">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 4v4h6V4z" /></svg>
+          <span>Übersicht</span>
+        </a>
+        <a href="#kunden" data-ziel="kunden">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-6 6.5-6s5.9 2.4 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .7 3.2 2.9 3.5 6" /></svg>
+          <span>Kunden</span>
+        </a>
+        <a href="#kalender" data-ziel="kalender">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg>
+          <span>Kalender</span>
+        </a>
+        <a href="#geld" data-ziel="geld">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12.5" rx="3" /><circle cx="12" cy="12.25" r="2.75" /><path d="M6 9.5v5.5M18 9.5v5.5" /></svg>
+          <span>Geld</span>
+        </a>
+        <a href="#aufgaben" data-ziel="aufgaben">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5l2 2 3.5-4M4 16.5l2 2 3.5-4M13 7h7M13 17h7" /></svg>
+          <span>Aufgaben</span>
+        </a>
+      </nav>
+      <button class="knopf knopf--leise abmelden" type="button" data-abmelden hidden>Abmelden</button>
+    </header>
+
+    <p class="testmodus" data-testmodus hidden>
+      Testmodus: Die Daten liegen nur in diesem Browser. Sobald Supabase eingerichtet ist, seht ihr beide dasselbe.
+    </p>
+
+    <main class="inhalt" id="inhalt" tabindex="-1" data-inhalt></main>
+
+    <section class="anmeldung" data-anmeldung hidden>
+      <div class="anmeldung__karte">
+        <svg class="anmeldung__zeichen" viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="2.5" y="2.5" width="27" height="27" rx="4" fill="none" stroke="#010F2B" stroke-width="2.4" />
+          <path d="M16 3v26M3 16h26" stroke="#010F2B" stroke-width="2.4" />
+          <path d="M6.5 25.5 25.5 6.5" stroke="#2B5CFF" stroke-width="3.2" stroke-linecap="round" />
+          <circle cx="9.6" cy="9.6" r="2.1" fill="#010F2B" />
+        </svg>
+        <h1>Klar Glas intern</h1>
+        <p class="leise">Gib deine Klar-Glas-Adresse ein. Du bekommst einen Link per E-Mail, mit dem du reinkommst.</p>
+        <form class="formular" data-anmelde-form>
+          <label class="feld">
+            <span>E-Mail</span>
+            <input type="email" name="email" autocomplete="email" spellcheck="false" required placeholder="vorname.nachname@klarglas-berlin.de" />
+          </label>
+          <button class="knopf knopf--voll" type="submit">Anmelde-Link schicken</button>
+          <p class="meldung" data-anmelde-meldung role="status"></p>
+        </form>
+      </div>
+    </section>
+
+    <dialog class="dialog" data-dialog>
+      <form method="dialog" class="dialog__form" data-dialog-form></form>
+    </dialog>
+
+    <dialog class="diagramm-popup" data-diagramm aria-labelledby="diagramm-titel">
+      <div class="diagramm-popup__inhalt" data-diagramm-inhalt></div>
+    </dialog>
+
+    <dialog class="terminkarte" data-terminkarte aria-labelledby="tk-titel">
+      <button class="terminkarte__zu" type="button" data-tk-zu aria-label="Schließen">×</button>
+      <div class="terminkarte__griff" aria-hidden="true"></div>
+      <div class="terminkarte__inhalt" data-tk-inhalt></div>
+    </dialog>
+
+    <div class="toast" data-toast role="status" aria-live="polite"></div>
+
+    <script src="config.js"></script>
+    <script src="supabase.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
