@@ -2319,30 +2319,91 @@ async function teamName(email) {
   return CFG.TEAM[hash] || null;
 }
 
+// Login-Mails sind bei Supabase knapp – deshalb kurze Sperre nach jedem Versand
+const LINK_SPERRE_MS = 60000;
+const linkGesperrtBis = () => {
+  try {
+    return Number(localStorage.getItem("klarglas-link-sperre")) || 0;
+  } catch {
+    return 0;
+  }
+};
+
 function anmeldungZeigen(client, meldung = "") {
   inhalt.hidden = true;
   $("[data-nav]").hidden = true;
   $("[data-anmeldung]").hidden = false;
   const form = $("[data-anmelde-form]");
   const ausgabe = $("[data-anmelde-meldung]");
+  const knopf = $("[data-anmelde-knopf]");
+  const passwortFeld = form.elements.passwort;
   ausgabe.textContent = meldung;
+  const beschriften = () => (knopf.textContent = passwortFeld.value ? "Anmelden" : "Login-Link schicken");
+  passwortFeld.addEventListener("input", beschriften);
+  beschriften();
+
   form.onsubmit = async (event) => {
     event.preventDefault();
     // Unsichtbare Zeichen (z. B. aus Autofill oder Kopieren) entfernen
     const email = String(new FormData(form).get("email") || "").replace(/[\s\u200B-\u200D\uFEFF]/g, "").toLowerCase();
+    const passwort = passwortFeld.value;
     if (!(await teamName(email))) {
       ausgabe.textContent = `„${email}“ hat keinen Zugang. Nimm die Adresse, mit der du in Supabase eingeladen bist.`;
       return;
     }
-    const knopf = form.querySelector("button");
     knopf.disabled = true;
+    if (passwort) {
+      const { error } = await client.auth.signInWithPassword({ email, password: passwort });
+      knopf.disabled = false;
+      if (error) {
+        ausgabe.textContent = /invalid/i.test(error.message)
+          ? "E-Mail oder Passwort stimmt nicht. Noch kein Passwort? Feld leer lassen und Login-Link holen."
+          : `Das hat nicht geklappt: ${error.message}`;
+      }
+      return; // Erfolg: onAuthStateChange öffnet das Dashboard
+    }
+    const rest = linkGesperrtBis() - Date.now();
+    if (rest > 0) {
+      knopf.disabled = false;
+      ausgabe.textContent = `Ein Link ist schon unterwegs – schau in dein Postfach (auch Spam). Neuer Link in ${Math.ceil(rest / 1000)} Sekunden.`;
+      return;
+    }
     const { error } = await client.auth.signInWithOtp({
       email,
       options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname },
     });
     knopf.disabled = false;
-    ausgabe.textContent = error ? `Das hat nicht geklappt: ${error.message}` : "Check dein Postfach und tipp auf den Link in der E-Mail.";
+    if (error) {
+      ausgabe.textContent = /rate limit/i.test(error.message)
+        ? "Supabase verschickt gerade keine weiteren Mails (Limit pro Stunde). Nimm den letzten Link aus deinem Postfach oder melde dich mit Passwort an."
+        : `Das hat nicht geklappt: ${error.message}`;
+      return;
+    }
+    try {
+      localStorage.setItem("klarglas-link-sperre", String(Date.now() + LINK_SPERRE_MS));
+    } catch {
+      /* egal */
+    }
+    ausgabe.textContent = "Check dein Postfach und tipp auf den Link in der E-Mail. Danach unter „Passwort“ eins festlegen, dann brauchst du keine Mails mehr.";
   };
+}
+
+function dialogPasswort() {
+  oeffneDialog({
+    titel: "Passwort festlegen",
+    knopf: "Speichern",
+    felder: `
+      <p class="hinweis">Damit meldest du dich künftig ohne Login-Mail an. Mindestens 8 Zeichen.</p>
+      <label class="feld"><span>Neues Passwort</span><input name="eins" type="password" autocomplete="new-password" minlength="8" required /></label>
+      <label class="feld"><span>Nochmal</span><input name="zwei" type="password" autocomplete="new-password" minlength="8" required /></label>`,
+    absenden: async (f) => {
+      if (f.eins.length < 8) throw new Error("Mindestens 8 Zeichen.");
+      if (f.eins !== f.zwei) throw new Error("Die beiden Passwörter sind nicht gleich.");
+      const { error } = await supa.auth.updateUser({ password: f.eins });
+      if (error) throw new Error(error.message);
+      zeigeToast("Passwort gespeichert – ab jetzt ohne Mail anmelden", 4000);
+    },
+  });
 }
 
 (async function init() {
@@ -2355,6 +2416,8 @@ function anmeldungZeigen(client, meldung = "") {
   const client = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
   supa = client;
   const abmelden = $("[data-abmelden]");
+  const passwortKnopf = $("[data-passwort-setzen]");
+  passwortKnopf.onclick = () => dialogPasswort();
   abmelden.onclick = async () => {
     await client.auth.signOut();
     location.reload();
@@ -2369,6 +2432,7 @@ function anmeldungZeigen(client, meldung = "") {
       return anmeldungZeigen(client, `Angemeldet als „${email}“ – diese Adresse hat keinen Zugang.`);
     }
     abmelden.hidden = false;
+    passwortKnopf.hidden = false;
     if (!db) await starten(supabaseDb(client), name);
   };
 

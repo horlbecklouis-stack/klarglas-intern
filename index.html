@@ -53,6 +53,7 @@
           <span>Aufgaben</span>
         </a>
       </nav>
+      <button class="knopf knopf--leise abmelden" type="button" data-passwort-setzen hidden>Passwort</button>
       <button class="knopf knopf--leise abmelden" type="button" data-abmelden hidden>Abmelden</button>
     </header>
 
@@ -71,13 +72,17 @@
           <circle cx="9.6" cy="9.6" r="2.1" fill="#010F2B" />
         </svg>
         <h1>Klar Glas intern</h1>
-        <p class="leise">Gib deine Klar-Glas-Adresse ein. Du bekommst einen Link per E-Mail, mit dem du reinkommst.</p>
+        <p class="leise">Mit E-Mail und Passwort anmelden. Noch kein Passwort? Dann lass das Feld leer und hol dir einen Login-Link per Mail.</p>
         <form class="formular" data-anmelde-form>
           <label class="feld">
             <span>E-Mail</span>
             <input type="email" name="email" autocomplete="email" spellcheck="false" required placeholder="vorname.nachname@klarglas-berlin.de" />
           </label>
-          <button class="knopf knopf--voll" type="submit">Anmelde-Link schicken</button>
+          <label class="feld">
+            <span>Passwort</span>
+            <input type="password" name="passwort" autocomplete="current-password" placeholder="leer lassen für Login-Link" />
+          </label>
+          <button class="knopf knopf--voll" type="submit" data-anmelde-knopf>Login-Link schicken</button>
           <p class="meldung" data-anmelde-meldung role="status"></p>
         </form>
       </div>
