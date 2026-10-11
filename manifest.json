@@ -1,13 +1,14 @@
 {
-  "name": "Klar Glas intern",
+  "name": "Klar Glas Intern",
   "short_name": "Klar Glas",
-  "start_url": "./#uebersicht",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#fffefc",
-  "theme_color": "#fffefc",
+  "background_color": "#FFFEFC",
+  "theme_color": "#010F2B",
   "lang": "de",
   "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]

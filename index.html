@@ -5,9 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Klar Glas – Intern</title>
     <meta name="robots" content="noindex, nofollow" />
-    <meta name="theme-color" content="#fffefc" />
+    <meta name="theme-color" content="#010F2B" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Klar Glas" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon-180.png" />
@@ -55,6 +56,9 @@
       </nav>
       <button class="knopf knopf--leise abmelden" type="button" data-passwort-setzen hidden>Passwort</button>
       <button class="knopf knopf--leise abmelden" type="button" data-abmelden hidden>Abmelden</button>
+      <button class="kopf__menue" type="button" data-menue aria-label="Menü" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+      </button>
     </header>
 
     <p class="testmodus" data-testmodus hidden>
@@ -72,7 +76,7 @@
           <circle cx="9.6" cy="9.6" r="2.1" fill="#010F2B" />
         </svg>
         <h1>Klar Glas intern</h1>
-        <p class="leise">Mit E-Mail und Passwort anmelden. Noch kein Passwort? Dann lass das Feld leer und hol dir einen Login-Link per Mail.</p>
+        <p class="leise">Mit E-Mail und Passwort anmelden.</p>
         <form class="formular" data-anmelde-form>
           <label class="feld">
             <span>E-Mail</span>
@@ -80,9 +84,14 @@
           </label>
           <label class="feld">
             <span>Passwort</span>
-            <input type="password" name="passwort" autocomplete="current-password" placeholder="leer lassen für Login-Link" />
+            <span class="feld__eingabe">
+              <input type="password" name="passwort" autocomplete="current-password" placeholder="leer lassen für Login-Link" />
+              <button class="feld__auge" type="button" data-passwort-zeigen aria-pressed="false" aria-label="Passwort anzeigen">Anzeigen</button>
+            </span>
           </label>
           <button class="knopf knopf--voll" type="submit" data-anmelde-knopf>Login-Link schicken</button>
+          <div class="trenner" role="presentation"><span>oder</span></div>
+          <p class="leise anmeldung__mail">Login-Link per Mail: Passwortfeld leer lassen und auf den Knopf tippen.</p>
           <p class="meldung" data-anmelde-meldung role="status"></p>
         </form>
       </div>
@@ -100,6 +109,19 @@
       <button class="terminkarte__zu" type="button" data-tk-zu aria-label="Schließen">×</button>
       <div class="terminkarte__griff" aria-hidden="true"></div>
       <div class="terminkarte__inhalt" data-tk-inhalt></div>
+    </dialog>
+
+    <dialog class="menue-sheet" data-menue-sheet aria-labelledby="menue-titel">
+      <div class="menue-sheet__griff" aria-hidden="true"></div>
+      <div class="menue-sheet__kopf">
+        <p class="menue-sheet__name" id="menue-titel" data-menue-name></p>
+        <button class="menue-sheet__zu" type="button" data-menue-zu aria-label="Schließen">×</button>
+      </div>
+      <ul class="menue-sheet__liste">
+        <li><a class="menue-sheet__zeile" href="#zeiten" data-menue-link>Wann wir können</a></li>
+        <li><button class="menue-sheet__zeile" type="button" data-menue-passwort hidden>Passwort ändern</button></li>
+        <li><button class="menue-sheet__zeile menue-sheet__zeile--gefahr" type="button" data-menue-abmelden hidden>Abmelden</button></li>
+      </ul>
     </dialog>
 
     <div class="toast" data-toast role="status" aria-live="polite"></div>

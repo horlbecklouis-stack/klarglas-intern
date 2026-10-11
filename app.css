@@ -37,9 +37,12 @@
   --r-field: 12px;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Bottom-Sheets gleiten mit derselben Kurve wie Schubladen, nur als eigener Name */
+  --ease-sheet: var(--ease-drawer);
   --dur-press: 160ms;
   --dur-hover: 200ms;
   --dur-ui: 250ms;
+  --dur-sheet: 320ms;
   --nav-h: 68px;
 
   /* Ebenen: Karten (1), KPI-Kacheln (2), Navy-Hervorhebungen (3) */
@@ -227,7 +230,11 @@ label {
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--ink-3);
-  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease, transform var(--dur-press) var(--ease-out);
+}
+
+.nav a:active {
+  transform: scale(0.97);
 }
 
 .nav svg {
@@ -394,7 +401,7 @@ label {
   gap: 0.2rem;
   text-decoration: none;
   box-shadow: var(--schatten-kachel);
-  transition: transform var(--dur-hover) var(--ease-out), box-shadow var(--dur-hover) var(--ease-out);
+  transition: transform var(--dur-press) var(--ease-out);
 }
 
 /* Feine Akzentlinie oben in der Kennzahlfarbe */
@@ -420,7 +427,6 @@ label {
   color: var(--cream);
 }
 
-.kachel--dunkel:hover,
 .kachel--dunkel:focus-visible {
   background: #1a2952;
   border-color: var(--accent-on-dark);
@@ -734,8 +740,19 @@ label {
   font-variant-numeric: tabular-nums;
 }
 
-a.zeile:hover .zeile__titel {
-  color: var(--accent);
+.zeile {
+  transition: transform var(--dur-press) var(--ease-out), background-color var(--dur-hover) ease;
+}
+
+a.zeile:active,
+.zeile--knopf:active {
+  transform: scale(0.98);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a.zeile:hover .zeile__titel {
+    color: var(--accent);
+  }
 }
 
 .datum-marke {
@@ -823,7 +840,7 @@ a.zeile:hover .zeile__titel {
   padding: 0.6rem;
   border-radius: var(--r-card);
   background: var(--surface);
-  transition: background-color var(--dur-hover) ease, box-shadow var(--dur-hover) ease;
+  transition: background-color var(--dur-hover) ease;
 }
 
 .kanban__spalte.ist-ziel {
@@ -1090,17 +1107,6 @@ a.zeile:hover .zeile__titel {
   margin-top: 0.25rem;
 }
 
-.dialog[open] {
-  animation: dialog-rein var(--dur-ui) var(--ease-out);
-}
-
-@keyframes dialog-rein {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
-}
-
 /* ---------- Anmeldung ---------- */
 
 .anmeldung {
@@ -1184,11 +1190,6 @@ a.zeile:hover .zeile__titel {
     opacity: 0.8;
   }
 
-  .dialog[open],
-  .diagramm-popup[open] {
-    animation: none;
-  }
-
   .toast {
     transform: translate(-50%, 0);
   }
@@ -1228,17 +1229,6 @@ a.zeile:hover .zeile__titel {
   background: rgba(1, 15, 43, 0.45);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-}
-
-.diagramm-popup[open] {
-  animation: diagramm-rein 200ms var(--ease-out);
-}
-
-@keyframes diagramm-rein {
-  from {
-    opacity: 0;
-    transform: scale(0.97);
-  }
 }
 
 .diagramm-popup__inhalt {
@@ -1285,8 +1275,10 @@ a.zeile:hover .zeile__titel {
   cursor: pointer;
 }
 
-.diagramm-popup__zu:hover {
-  border-color: var(--navy);
+@media (hover: hover) and (pointer: fine) {
+  .diagramm-popup__zu:hover {
+    border-color: var(--navy);
+  }
 }
 
 .diagramm-popup__zu:focus-visible {
@@ -1298,8 +1290,10 @@ a.zeile:hover .zeile__titel {
   cursor: default;
 }
 
-.diagramm__punkt:hover circle:last-of-type {
-  r: 5.5;
+@media (hover: hover) and (pointer: fine) {
+  .diagramm__punkt:hover circle:last-of-type {
+    r: 5.5;
+  }
 }
 
 /* ---------- Terminanfragen ---------- */
@@ -1355,8 +1349,10 @@ a.zeile:hover .zeile__titel {
   border-color: rgba(255, 255, 255, 0.6);
 }
 
-.karte--terminanfrage .knopf:hover {
-  border-color: #fff;
+@media (hover: hover) and (pointer: fine) {
+  .karte--terminanfrage .knopf:hover {
+    border-color: #fff;
+  }
 }
 
 /* ---------- Verfügbarkeitszeiten ---------- */
@@ -1440,9 +1436,11 @@ a.zeile:hover .zeile__titel {
   transition: border-color var(--dur-hover) ease, background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 
-.kopf__zeiten:not([aria-current="page"]):hover {
-  border-color: var(--accent);
-  background: var(--surface);
+@media (hover: hover) and (pointer: fine) {
+  .kopf__zeiten:not([aria-current="page"]):hover {
+    border-color: var(--accent);
+    background: var(--surface);
+  }
 }
 
 .kopf__zeiten:focus-visible {
@@ -1505,7 +1503,7 @@ a.zeile:hover .zeile__titel {
 
 a.kachel:active,
 .kachel--tab:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
 }
 
 /* Kartenköpfe mit farbigem Icon-Badge */
@@ -1683,8 +1681,10 @@ a.kachel:active,
   border-color: rgba(255, 254, 252, 0.3);
 }
 
-.karte--kasse .knopf:hover {
-  border-color: var(--accent-on-dark);
+@media (hover: hover) and (pointer: fine) {
+  .karte--kasse .knopf:hover {
+    border-color: var(--accent-on-dark);
+  }
 }
 
 /* ---------- Geld: Bewegungen getönt ---------- */
@@ -2221,8 +2221,10 @@ a.kachel:active,
 }
 
 /* ---------- Terminkarte (Overlay, Desktop zentriert, Handy Bottom-Sheet) ---------- */
+/* ---------- Terminkarte ----------
+   Hero (Datum, Uhrzeit, Status, Countdown) | Kunde | drei Schnellkacheln | Infos | Bezahlt-Ebene */
 .terminkarte {
-  width: min(520px, calc(100% - 24px));
+  width: min(540px, calc(100% - 24px));
   max-width: none;
   max-height: calc(100dvh - 48px);
   margin: auto;
@@ -2242,11 +2244,6 @@ a.kachel:active,
   -webkit-backdrop-filter: blur(4px);
 }
 
-/* Gleiche Einblendung wie der Auftragsdialog */
-.terminkarte[open] {
-  animation: dialog-rein var(--dur-ui) var(--ease-out);
-}
-
 .terminkarte__inhalt {
   display: grid;
   min-width: 0;
@@ -2258,18 +2255,18 @@ a.kachel:active,
 
 .terminkarte__zu {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: 0.75rem;
+  right: 0.75rem;
   z-index: 3;
   width: 44px;
   height: 44px;
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid rgba(255, 254, 252, 0.28);
+  border: 1px solid rgba(255, 254, 252, 0.3);
   border-radius: 50%;
-  background: rgba(255, 254, 252, 0.1);
-  color: var(--cream);
+  background: rgba(255, 254, 252, 0.12);
+  color: #fffefc;
   font-size: 1.5rem;
   line-height: 1;
   cursor: pointer;
@@ -2279,81 +2276,82 @@ a.kachel:active,
 .tk-bearbeiten:focus-visible,
 .tk-rund:focus-visible,
 .tk-speichern:focus-visible,
-.tk-kunde:focus-visible {
+.tk-kunde:focus-visible,
+.tk-aendern:focus-visible {
   outline: 3px solid var(--accent-on-dark);
   outline-offset: 2px;
 }
 
-/* Kopf: große Zahlen auf Navy */
+/* Hero: Navy nach Markenblau, helle Schrift (AA) */
 .tk-kopf {
   position: relative;
   display: grid;
-  gap: 0.35rem;
-  padding: 1.6rem 1.5rem 1.4rem;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 1rem 1.5rem 1.6rem;
   border-radius: var(--r-karte) var(--r-karte) 0 0;
-  background: radial-gradient(120% 90% at 100% 0%, rgba(43, 92, 255, 0.4), transparent 60%), var(--navy);
-  color: var(--cream);
+  background: linear-gradient(155deg, var(--navy) 0%, #0b2a78 58%, var(--accent) 150%);
+  color: #fffefc;
+}
+
+/* Zeile oben: Status links, rechts Platz für Bearbeiten und Schließen */
+.tk-kopf__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  min-height: 44px;
+  padding-right: 12rem;
+}
+
+.tk-kopf__status .status {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tk-countdown {
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--pill);
+  background: rgba(255, 254, 252, 0.16);
+  color: #fffefc;
+  font-size: 0.875rem;
+  font-weight: 650;
 }
 
 .tk-wochentag {
+  margin-top: 0.4rem;
   font-size: 0.9375rem;
   font-weight: 600;
-  color: rgba(255, 254, 252, 0.72);
+  color: rgba(255, 254, 252, 0.84);
 }
 
 .tk-datum {
-  font-size: clamp(1.75rem, 1.4rem + 1.4vw, 2.2rem);
+  font-size: clamp(2rem, 1.5rem + 1.8vw, 2.6rem);
   font-weight: 750;
   letter-spacing: -0.03em;
-  line-height: 1.05;
+  line-height: 1.02;
+  overflow-wrap: anywhere;
 }
 
 .tk-uhr {
-  font-size: clamp(2.5rem, 2rem + 2vw, 3.25rem);
-  font-weight: 750;
-  letter-spacing: -0.03em;
-  line-height: 1;
+  font-size: 1.375rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
 
 .tk-uhr span {
   font-size: 1rem;
   font-weight: 600;
-  letter-spacing: 0;
-  color: var(--accent-on-dark);
+  color: #fffefc;
+  opacity: 0.85;
 }
 
-.tk-chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
-  margin-top: 0.5rem;
-}
-
-.tk-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 30px;
-  padding: 0.25rem 0.7rem;
-  border: 1px solid rgba(255, 254, 252, 0.22);
-  border-radius: var(--pill);
-  background: rgba(255, 254, 252, 0.1);
-  color: var(--cream);
-  font-size: 0.8125rem;
-  font-weight: 650;
-}
-
-.tk-chip .kanal-marke {
-  margin: 0;
-  vertical-align: baseline;
-}
-
-/* Bearbeiten neben dem Schließen-Knopf, gleicher Knopfstil wie der Auftragsdialog */
+/* Bearbeiten: Stift und Text, oben rechts */
 .tk-bearbeiten {
   position: absolute;
-  top: 1rem;
+  top: 0.75rem;
   right: 4.25rem;
   z-index: 3;
   min-height: 44px;
@@ -2361,10 +2359,10 @@ a.kachel:active,
   align-items: center;
   gap: 0.4rem;
   padding: 0 0.95rem;
-  border: 1px solid rgba(255, 254, 252, 0.28);
+  border: 1px solid rgba(255, 254, 252, 0.3);
   border-radius: var(--pill);
-  background: rgba(255, 254, 252, 0.1);
-  color: var(--cream);
+  background: rgba(255, 254, 252, 0.12);
+  color: #fffefc;
   font-size: 0.9375rem;
   font-weight: 650;
   cursor: pointer;
@@ -2380,29 +2378,18 @@ a.kachel:active,
   stroke-linejoin: round;
 }
 
-/* Körper: Kunde, Schnellaktionen, Infos, Bezahlt */
+/* Kunde: Avatar, Name, Stammkunde, Zahlen */
 .tk-kunde {
-  display: grid;
-  gap: 0.15rem;
-  margin: 1.25rem 1.5rem 0;
-  text-decoration: none;
-  color: var(--navy);
-  border-radius: var(--r-field);
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
   min-width: 0;
-}
-
-.tk-kunde__name {
-  font-size: clamp(1.4rem, 1.2rem + 0.8vw, 1.75rem);
-  font-weight: 750;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-}
-
-.tk-kunde__zur {
-  font-size: 0.875rem;
-  font-weight: 650;
-  color: var(--blau-text);
+  margin: 1.25rem 1.5rem 0;
+  padding: 0.9rem 1rem;
+  border-radius: var(--r-kachel);
+  background: var(--surface);
+  color: var(--navy);
+  text-decoration: none;
 }
 
 .tk-kunde--leer {
@@ -2410,41 +2397,118 @@ a.kachel:active,
   color: var(--ink-3);
 }
 
-.tk-schnell {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem 0.9rem;
-  padding: 1.1rem 1.5rem 0;
-}
-
-.tk-rund {
-  min-width: 72px;
-  min-height: 44px;
-  display: grid;
-  justify-items: center;
-  gap: 0.4rem;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--navy);
-  font-size: 0.8125rem;
-  font-weight: 650;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.tk-rund__kreis {
-  width: 56px;
-  height: 56px;
+.tk-avatar {
+  flex: none;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-items: center;
   border-radius: 50%;
+  background: var(--navy);
+  color: #fffefc;
+  font-size: 1.0625rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+}
+
+.tk-kunde__text {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.tk-kunde__name {
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.tk-kunde__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+  font-size: 0.875rem;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.tk-stamm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.6rem 0.15rem 0.2rem;
+  border-radius: var(--pill);
+  background: #e8eaf0;
+  color: var(--navy);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.tk-stamm .badge {
+  width: 22px;
+  height: 22px;
+}
+
+.tk-kunde__zur {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: var(--blau-text);
+}
+
+/* Schnellaktionen: drei gleich große Kacheln, ohne Angabe ausgegraut */
+.tk-schnell {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0.75rem 1.5rem 0;
+}
+
+.tk-rund {
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.45rem;
+  padding: 0.85rem 0.25rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-kachel);
+  background: var(--white);
+  color: var(--navy);
+  font-size: 0.875rem;
+  font-weight: 650;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
   transition: transform var(--dur-press) var(--ease-out);
 }
 
+.tk-rund:active {
+  transform: scale(0.97);
+}
+
+.tk-rund--aus {
+  background: var(--surface);
+  border-color: transparent;
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+.tk-rund__kreis {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
 .tk-rund__kreis svg {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
@@ -2455,15 +2519,28 @@ a.kachel:active,
 .tk-rund__kreis--blau { background: var(--blau); color: #fff; }
 .tk-rund__kreis--violett { background: var(--violett); color: #fff; }
 .tk-rund__kreis--gruen { background: var(--gruen); color: #fff; }
+.tk-rund__kreis--aus { background: #e4e7ee; color: var(--ink-3); }
 
-.tk-rund:active .tk-rund__kreis {
-  transform: scale(0.96);
+/* Infos: gruppierte Listen, leere Zeilen fehlen */
+.tk-gruppe {
+  min-width: 0;
+  margin: 1.25rem 1.5rem 0;
+}
+
+.tk-gruppe__titel {
+  margin: 0 0 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--ink-3);
 }
 
 .tk-infos {
   display: grid;
-  margin: 0.9rem 0 0;
-  padding: 0 1.5rem;
+  margin: 0;
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-kachel);
+  background: var(--white);
 }
 
 .tk-info {
@@ -2517,15 +2594,20 @@ a.kachel:active,
   font-weight: 500;
 }
 
-/* Bezahlt: deutlich hervorgehoben, das wichtigste auf der Karte */
+.tk-info .kanal-marke {
+  margin: 0 0.4rem 0 0;
+  vertical-align: middle;
+}
+
+/* Bezahlt: eigene abgesetzte Ebene, das Wichtigste auf der Karte */
 .tk-geld {
   display: grid;
   gap: 0.9rem;
-  margin-top: 1.1rem;
-  padding: 1.35rem 1.5rem 1.5rem;
-  background: var(--blau-wash);
-  border-top: 1px solid rgba(43, 92, 255, 0.16);
   min-width: 0;
+  margin-top: 1.5rem;
+  padding: 1.25rem 1.5rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  background: var(--tint);
+  border-top: 1px solid rgba(43, 92, 255, 0.18);
 }
 
 .tk-geld--leise {
@@ -2534,28 +2616,55 @@ a.kachel:active,
 }
 
 .tk-geld__titel {
-  font-size: 1.0625rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .tk-geld__form {
   display: grid;
-  gap: 0.6rem;
+  gap: 0.75rem;
   min-width: 0;
 }
 
-.tk-geld__reihe {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  align-items: center;
+/* Geschätzt und Wirklich bekommen nebeneinander */
+.tk-vergleich {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr);
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.tk-vergleich__schaetz {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+  padding-bottom: 0.9rem;
+}
+
+.tk-vergleich__label {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: var(--ink-3);
+}
+
+.tk-vergleich__wert {
+  font-size: 1.125rem;
+  font-weight: 650;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .tk-betrag {
-  position: relative;
-  flex: 1 1 180px;
   min-width: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.tk-betrag__box {
+  position: relative;
   display: flex;
 }
 
@@ -2564,7 +2673,7 @@ a.kachel:active,
   min-width: 0;
   min-height: 64px;
   padding: 0.5rem 2.75rem 0.5rem 1rem;
-  border: 1px solid var(--accent);
+  border: 1.5px solid var(--accent);
   border-radius: 16px;
   background: var(--white);
   color: var(--navy);
@@ -2590,25 +2699,47 @@ a.kachel:active,
   pointer-events: none;
 }
 
-.terminkarte .tk-speichern {
-  min-height: 64px;
-  padding: 0 1.5rem;
-  font-size: 1.0625rem;
+.tk-geld--leise .tk-betrag__feld {
+  font-size: 1.5rem;
 }
 
+/* Live-Trinkgeld als farbiger Chip; ohne Betrag gar nicht sichtbar */
 .tk-tg {
+  justify-self: start;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+  max-width: 100%;
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--pill);
+  background: var(--gruen-wash);
+  color: var(--gruen-text);
   font-size: 0.9375rem;
-  color: var(--ink-2);
-  font-weight: 600;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.tk-tg:empty {
+  display: none;
 }
 
 .tk-tg strong {
-  color: var(--gruen-text);
   font-variant-numeric: tabular-nums;
 }
 
-.tk-geld--leise .tk-betrag__feld {
-  font-size: 1.5rem;
+.tk-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.terminkarte .tk-speichern {
+  flex: 1 1 100%;
+  min-height: 56px;
+  padding: 0 1.5rem;
+  font-size: 1.0625rem;
 }
 
 .tk-geld__zeile {
@@ -2622,11 +2753,19 @@ a.kachel:active,
   flex: 1 1 200px;
   min-width: 0;
   display: grid;
-  gap: 0.2rem;
+  gap: 0.25rem;
 }
 
-.tk-geld__text .tk-geld__titel {
-  font-size: 1.125rem;
+.tk-geld__werte {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.tk-geld__werte strong {
+  color: var(--gruen-text);
+  font-variant-numeric: tabular-nums;
 }
 
 .tk-geld__ok {
@@ -2634,6 +2773,10 @@ a.kachel:active,
   font-weight: 650;
   color: var(--gruen-text);
   animation: tk-fade 240ms var(--ease-out) 120ms both;
+}
+
+.tk-aendern {
+  align-self: start;
 }
 
 /* Häkchen: Kreis wächst sanft ins Bild (nur transform und opacity) */
@@ -2658,14 +2801,34 @@ a.kachel:active,
   stroke-linejoin: round;
 }
 
+/* Erfolg: Kreis poppt kurz über 1 und setzt sich, das Häkchen folgt versetzt */
 .tk-haken--neu {
-  animation: tk-haken-rein 320ms var(--ease-out) both;
+  animation: tk-haken-rein 280ms var(--ease-out) both;
+}
+
+.tk-haken--neu svg {
+  animation: tk-haken-strich 240ms var(--ease-out) 110ms both;
 }
 
 @keyframes tk-haken-rein {
-  from {
+  0% {
     opacity: 0;
     transform: scale(0.6);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes tk-haken-strich {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
   }
 }
 
@@ -2675,20 +2838,14 @@ a.kachel:active,
   }
 }
 
-/* Handy: Bottom-Sheet von unten, Griff oben, bis 90 % der Höhe */
-@media (max-width: 700px) {
+/* Handy: Bottom-Sheet von unten, Griff oben, Speichern-Leiste bleibt unten stehen */
+@media (max-width: 699px) {
   .terminkarte {
     width: 100%;
     max-width: 100%;
-    max-height: 90vh;
-    max-height: 90dvh;
-    margin: auto 0 0 0;
+    max-height: 92dvh;
+    margin: auto 0 0;
     border-radius: var(--r-karte) var(--r-karte) 0 0;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  .terminkarte[open] {
-    animation: terminkarte-hoch 320ms var(--ease-drawer);
   }
 
   .terminkarte__griff {
@@ -2701,17 +2858,25 @@ a.kachel:active,
     height: 5px;
     margin-left: -20px;
     border-radius: 3px;
-    background: rgba(255, 254, 252, 0.4);
+    background: rgba(255, 254, 252, 0.5);
   }
 
   .terminkarte__zu {
-    top: 0.75rem;
+    top: 0.6rem;
+    right: 0.6rem;
   }
 
-  /* Auf dem Handy nur das Stift-Icon, die Beschriftung steht im aria-label */
+  .tk-kopf {
+    padding-top: 1.9rem;
+  }
+
+  .tk-kopf__status {
+    padding-right: 7.5rem;
+  }
+
   .tk-bearbeiten {
-    top: 0.75rem;
-    right: 4.25rem;
+    top: 0.6rem;
+    right: 3.9rem;
     width: 44px;
     padding: 0;
     justify-content: center;
@@ -2721,20 +2886,45 @@ a.kachel:active,
     display: none;
   }
 
-  .tk-kopf {
-    padding-top: 2.1rem;
+  .tk-vergleich {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+
+  .tk-vergleich__schaetz {
+    padding-bottom: 0;
+    grid-template-columns: auto;
+    align-items: baseline;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  /* Speichern bleibt am unteren Rand sichtbar, auch wenn die Karte länger ist */
+  .tk-aktionen {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 0 -1.5rem;
+    padding: 0.75rem 1.5rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    background: var(--tint);
+    border-top: 1px solid var(--line);
+  }
+
+  .tk-geld--leise .tk-aktionen {
+    background: var(--surface);
   }
 }
 
-@keyframes terminkarte-hoch {
+@keyframes tk-deckend {
   from {
-    transform: translateY(100%);
+    opacity: 0;
   }
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .tk-rund:hover .tk-rund__kreis {
-    transform: translateY(-1px);
+  .tk-rund:hover {
+    border-color: rgba(1, 15, 43, 0.14);
   }
 
   .tk-kunde:hover .tk-kunde__name {
@@ -2742,29 +2932,554 @@ a.kachel:active,
     text-underline-offset: 3px;
   }
 
-  .tk-bearbeiten:hover {
-    background: rgba(255, 254, 252, 0.2);
+  .tk-bearbeiten:hover,
+  .terminkarte__zu:hover {
+    background: rgba(255, 254, 252, 0.22);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .terminkarte[open] {
-    animation: tk-deckend 200ms ease-out;
-  }
-
   .tk-haken--neu,
   .tk-geld__ok {
     animation: tk-deckend 200ms ease-out both;
   }
 
-  .tk-rund:active .tk-rund__kreis,
-  .tk-rund:hover .tk-rund__kreis {
+  .tk-haken--neu svg {
+    animation: none;
+  }
+
+  .tk-rund:active {
     transform: none;
   }
 }
 
-@keyframes tk-deckend {
-  from {
+/* Legende über dem eingebetteten Kalender */
+.kal-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+.kal-legende li { display: inline-flex; align-items: center; gap: 6px; }
+.kal-legende__punkt { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+/* ===================== Handy wie eine App, Feinschliff ===================== */
+
+/* Sichtbarer Fokus überall, auch wenn einzelne Bereiche eigene Ringe haben */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Menü-Knopf nur am Handy */
+.kopf__menue {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .kopf__menue:hover {
+    background: var(--surface);
+  }
+}
+
+/* Handy und kleine Tablets: Kopf mit Menü, Tab-Leiste unten, Bottom-Sheets */
+@media (max-width: 899px) {
+  /* clip statt hidden: verhindert seitliches Rutschen, ohne den sticky Kopf zu brechen */
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+  }
+
+  .kopf {
+    min-height: calc(56px + env(safe-area-inset-top, 0px));
+    padding-top: calc(0.6rem + env(safe-area-inset-top, 0px));
+    padding-bottom: 0.6rem;
+  }
+
+  /* Zeiten, Passwort und Abmelden wandern ins Menü */
+  .kopf__zeiten,
+  [data-passwort-setzen],
+  [data-abmelden] {
+    display: none !important;
+  }
+
+  .kopf__menue {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--white);
+    color: var(--navy);
+    cursor: pointer;
+    transition: transform var(--dur-press) var(--ease-out);
+  }
+
+  .kopf__menue:active {
+    transform: scale(0.97);
+  }
+
+  .kopf__menue svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  /* Feste Tab-Leiste über die volle Breite */
+  .nav {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transform: none;
+    width: 100%;
+    height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+    padding: 6px max(6px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px));
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    background: rgba(255, 254, 252, 0.97);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    z-index: 25;
+  }
+
+  .nav a {
+    min-width: 0;
+    min-height: 48px;
+    padding: 4px 2px;
+    border-radius: 14px;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+
+  .nav a[aria-current="page"] {
+    background: var(--accent-wash);
+    color: var(--accent-deep);
+  }
+
+  /* Indikator: kurzer Balken oben, der beim Tab-Wechsel gleitet (nur transform) */
+  .nav a {
+    position: relative;
+  }
+
+  .nav a::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 30%;
+    right: 30%;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transition: transform var(--dur-hover) var(--ease-out);
+  }
+
+  .nav a[aria-current="page"]::before {
+    transform: scaleX(1);
+  }
+
+  /* Menü, Dialoge und Diagramm: Bottom-Sheet mit Griff */
+  .menue-sheet,
+  .diagramm-popup {
+    width: 100%;
+    max-width: 100%;
+    max-height: 90dvh;
+    margin: auto 0 0;
+    border-radius: 22px 22px 0 0;
+  }
+
+}
+
+/* Menü-Sheet */
+.menue-sheet {
+  width: min(420px, calc(100% - 24px));
+  margin: auto;
+  padding: 0 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  border: 0;
+  border-radius: 22px;
+  background: var(--cream);
+  color: var(--navy);
+  box-shadow: 0 -20px 60px -30px rgba(1, 15, 43, 0.5);
+}
+
+.menue-sheet::backdrop {
+  background: rgba(1, 15, 43, 0.45);
+}
+
+.menue-sheet__griff {
+  width: 40px;
+  height: 5px;
+  margin: 10px auto 4px;
+  border-radius: 3px;
+  background: rgba(1, 15, 43, 0.2);
+}
+
+.menue-sheet__kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.25rem 0 0.75rem;
+}
+
+.menue-sheet__name {
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+.menue-sheet__zu {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--navy);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.menue-sheet__liste {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.menue-sheet__zeile {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-field);
+  background: var(--white);
+  color: var(--navy);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 650;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.menue-sheet__zeile--gefahr {
+  margin-top: 0.6rem;
+  color: var(--error);
+}
+
+/* Trennlinie zwischen den Anmeldewegen */
+.trenner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.trenner::before,
+.trenner::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.anmeldung__mail {
+  text-align: center;
+  font-size: 0.9375rem;
+}
+
+/* Passwort anzeigen oder verbergen */
+.feld__eingabe {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.feld__eingabe input {
+  flex: 1;
+  min-width: 0;
+  padding-right: 5.5rem;
+}
+
+.feld__auge {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  min-width: 44px;
+  min-height: 40px;
+  padding: 0 0.7rem;
+  border: 0;
+  border-radius: var(--pill);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+/* Anmeldung: Karte mittig, auch am Handy */
+.anmeldung {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  box-sizing: border-box;
+}
+
+.anmeldung__karte {
+  width: min(420px, 100%);
+}
+
+/* Handy: Eingaben mit 16 px, sonst zoomt iOS beim Tippen */
+@media (max-width: 899px) {
+  input:not(.tk-betrag__feld):not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Lange Wörter, Mails und Zahlen umbrechen statt überlaufen */
+  td,
+  th,
+  dd,
+  dt,
+  li,
+  .zeile__titel,
+  .zeile__unter,
+  .kachel__info,
+  .kopfzeile p,
+  h1,
+  h2,
+  h3,
+  p {
+    overflow-wrap: anywhere;
+  }
+
+  .inhalt > *,
+  .karte,
+  .kachel,
+  .zeile__haupt {
+    min-width: 0;
+  }
+
+  /* Dialoge: Griff oben, Aktionsleiste bleibt unten stehen */
+  .dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92dvh;
+    margin: auto 0 0;
+    border-radius: 22px 22px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .dialog::before {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 5px;
+    margin: 10px auto 0;
+    border-radius: 3px;
+    background: rgba(1, 15, 43, 0.2);
+  }
+
+  .dialog__fuss {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 0 -1.35rem -1.35rem;
+    padding: 0.85rem 1.35rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+    background: var(--cream);
+    border-top: 1px solid var(--line);
+  }
+
+  .dialog__fuss .knopf {
+    flex: 1 1 auto;
+  }
+
+  /* Geld: Kasse groß oben, dann die Kennzahlen als Kacheln */
+  .kachel--tab.kachel--gross {
+    grid-column: 1 / -1;
+    min-height: 132px;
+    padding: 1.25rem;
+    border-color: transparent;
+    background: linear-gradient(155deg, var(--navy) 0%, #0b2a78 62%, var(--accent) 150%);
+    color: #fffefc;
+  }
+
+  .kachel--tab.kachel--gross .kachel__titel,
+  .kachel--tab.kachel--gross .kachel__info {
+    color: #fffefc;
+  }
+
+  .kachel--tab.kachel--gross .kachel__wert {
+    font-size: clamp(2.25rem, 9vw, 2.75rem);
+    color: #fffefc;
+  }
+}
+
+
+/* ===================== Bewegung: Öffnen, Schließen, Druck ===================== */
+
+/* Dialoge öffnen: Desktop skaliert sanft ein, am Handy gleitet das Sheet von unten hoch.
+   Die Start-Zustände stehen unten in @starting-style. Ohne Unterstützung erscheint alles sofort. */
+.dialog[open],
+.terminkarte[open],
+.menue-sheet[open],
+.diagramm-popup[open] {
+  transition:
+    opacity var(--dur-ui) var(--ease-out),
+    transform var(--dur-ui) var(--ease-out),
+    overlay var(--dur-ui) allow-discrete,
+    display var(--dur-ui) allow-discrete;
+}
+
+.dialog[open]::backdrop,
+.terminkarte[open]::backdrop,
+.menue-sheet[open]::backdrop,
+.diagramm-popup[open]::backdrop {
+  transition:
+    background-color var(--dur-ui) ease,
+    overlay var(--dur-ui) allow-discrete,
+    display var(--dur-ui) allow-discrete;
+}
+
+@media (max-width: 899px) {
+  .dialog[open],
+  .menue-sheet[open],
+  .diagramm-popup[open] {
+    transition:
+      transform var(--dur-sheet) var(--ease-sheet),
+      opacity var(--dur-ui) var(--ease-out),
+      overlay var(--dur-sheet) allow-discrete,
+      display var(--dur-sheet) allow-discrete;
+  }
+}
+
+@media (max-width: 699px) {
+  .terminkarte[open] {
+    transition:
+      transform var(--dur-sheet) var(--ease-sheet),
+      opacity var(--dur-ui) var(--ease-out),
+      overlay var(--dur-sheet) allow-discrete,
+      display var(--dur-sheet) allow-discrete;
+  }
+}
+
+@starting-style {
+  .dialog[open],
+  .terminkarte[open],
+  .menue-sheet[open],
+  .diagramm-popup[open] {
     opacity: 0;
+    transform: scale(0.97);
+  }
+
+  .dialog[open]::backdrop,
+  .terminkarte[open]::backdrop,
+  .menue-sheet[open]::backdrop,
+  .diagramm-popup[open]::backdrop {
+    background-color: rgba(1, 15, 43, 0);
+  }
+}
+
+@media (max-width: 899px) {
+  @starting-style {
+    .dialog[open],
+    .menue-sheet[open],
+    .diagramm-popup[open] {
+      opacity: 1;
+      transform: translateY(100%);
+    }
+  }
+}
+
+@media (max-width: 699px) {
+  @starting-style {
+    .terminkarte[open] {
+      opacity: 1;
+      transform: translateY(100%);
+    }
+  }
+}
+
+/* Reduzierte Bewegung: keine Wege, keine Skalierung, nur Farbe, Rahmen und Deckkraft wechseln */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  *::backdrop {
+    transition-property: color, background-color, border-color, opacity !important;
+  }
+
+  *:active {
+    transform: none !important;
+  }
+
+  @starting-style {
+    .dialog[open],
+    .terminkarte[open],
+    .menue-sheet[open],
+    .diagramm-popup[open] {
+      transform: none;
+    }
+  }
+}
+
+/* Handy: Filter-Chips brechen um statt seitlich zu scrollen */
+@media (max-width: 899px) {
+  .chips { flex-wrap: wrap; overflow-x: visible; }
+}
+
+/* Handy-Geld: Kasse über volle Breite, die anderen Kennzahlen zu zweit nebeneinander */
+.raster--geld-handy {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.raster--geld-handy .kachel--gross { grid-column: 1 / -1; }
+.raster--geld-handy .kachel:not(.kachel--gross) .kachel__wert { font-size: 1.375rem; }
+.raster--geld-handy .kachel:not(.kachel--gross) { padding: 14px; min-width: 0; }
+@media (max-width: 899px) {
+  .zeitraum { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+  .zeitraum .segment { align-self: stretch; }
+  .zeitraum__nav { justify-content: space-between; }
+}
+.raster--geld-handy .kachel:last-child:nth-child(even) { grid-column: 1 / -1; }
+
+/* Menü am Handy unten angedockt wie ein iOS-Sheet */
+@media (max-width: 899px) {
+  .menue-sheet {
+    width: 100%;
+    max-width: 100%;
+    margin: auto 0 0;
+    border-radius: 22px 22px 0 0;
   }
 }

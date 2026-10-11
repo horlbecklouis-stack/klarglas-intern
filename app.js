@@ -984,18 +984,38 @@ function terminListeHandy(termine) {
   </section>`;
 }
 
+// Alle aktiven Kalender aus der Tabelle; config.js nur als Rückfall, solange keiner eingetragen ist
+function sichtbareKalender() {
+  const liste = daten.kalender.filter((k) => k.aktiv !== false)
+    .sort((a, b) => (a.art === b.art ? a.name.localeCompare(b.name) : a.art === "eintragen" ? -1 : 1));
+  if (liste.length) return liste;
+  return CFG.KALENDER_ID ? [{ name: "Klar Glas", kalender_id: CFG.KALENDER_ID, art: "eintragen" }] : [];
+}
+
+// Farben aus Googles Einbett-Palette: Termine blau, gelesene Kalender abwechselnd bernstein und grau
+const KAL_FARBEN = { eintragen: "#3F51B5", lesen: ["#F09300", "#616161", "#8E24AA", "#0B8043"] };
+
+function kalenderFarbe(k, i) {
+  return k.art === "eintragen" ? KAL_FARBEN.eintragen : KAL_FARBEN.lesen[i % KAL_FARBEN.lesen.length];
+}
+
 function ansichtKalender() {
-  const id = CFG.KALENDER_ID;
   const handy = istHandy();
   const termine = kommendeTermine().slice(0, handy ? 8 : 10);
-  const einbetten = id
-    ? `<iframe class="kalender" title="Google-Kalender Klar Glas" loading="lazy"
-        src="https://calendar.google.com/calendar/embed?src=${encodeURIComponent(id)}&ctz=Europe%2FBerlin&hl=de&mode=${window.matchMedia("(min-width: 900px)").matches ? "WEEK" : "AGENDA"}&wkst=2&showTitle=0&showPrint=0&showCalendars=0&showTz=0"></iframe>
-       <p class="hinweis">Leer? Dann im selben Browser bei Google mit dem Konto anmelden, das den Kalender „Klar Glas“ sehen darf.</p>`
+  let lesend = 0;
+  const kalender = sichtbareKalender().map((k) => ({ ...k, farbe: kalenderFarbe(k, k.art === "eintragen" ? 0 : lesend++) }));
+  const quellen = kalender.map((k) => `src=${encodeURIComponent(k.kalender_id)}&color=${encodeURIComponent(k.farbe)}`).join("&");
+  const legende = kalender.length > 1
+    ? `<ul class="kal-legende" aria-label="Angezeigte Kalender">${kalender.map((k) => `<li><span class="kal-legende__punkt" style="background:${k.farbe}"></span>${esc(k.name)}<span class="leise"> · ${k.art === "eintragen" ? "Termine" : "nur lesen"}</span></li>`).join("")}</ul>`
+    : "";
+  const einbetten = kalender.length
+    ? `${legende}<iframe class="kalender" title="Google-Kalender" loading="lazy"
+        src="https://calendar.google.com/calendar/embed?${quellen}&ctz=Europe%2FBerlin&hl=de&mode=${window.matchMedia("(min-width: 900px)").matches ? "WEEK" : "AGENDA"}&wkst=2&showTitle=0&showPrint=0&showCalendars=0&showTz=0"></iframe>
+       <p class="hinweis">Leer oder fehlt ein Kalender? Dann im selben Browser bei Google mit einem Konto anmelden, das diese Kalender sehen darf.</p>`
     : `<section class="karte"><h2>Google-Kalender verbinden</h2>
-        <p class="leise">Trag in <code>config.js</code> bei <code>KALENDER_ID</code> die ID eures Kalenders „Klar Glas“ ein. Ihr findet sie im Google Kalender unter Einstellungen → „Klar Glas“ → Kalender integrieren.</p></section>`;
+        <p class="leise">Unter <a href="#zeiten">Wann wir können</a> → „+ Kalender hinzufügen“ euren Kalender eintragen.</p></section>`;
   return `
-    <div class="kopfzeile"><div><h1>Kalender</h1><p class="leise">Euer gemeinsamer Klar-Glas-Kalender mit allen bestätigten Terminen</p></div></div>
+    <div class="kopfzeile"><div><h1>Kalender</h1><p class="leise">Termine und Blocker aus allen verbundenen Kalendern</p></div></div>
     ${handy ? terminListeHandy(termine) : ""}
     ${einbetten}
     <section class="karte" ${handy ? "hidden" : ""} aria-labelledby="t-kommend">
@@ -1128,7 +1148,7 @@ function ansichtGeld() {
   const m = zahlenFuer(g.von, g.bis);
   const v = zahlenFuer(g.vorVon, g.vorBis);
   const erstattungen = offeneErstattungen();
-  const bewegungen = bewegungenListe().slice(0, 40);
+  const bewegungen = bewegungenListe().slice(0, handy ? 5 : 40);
 
   // Bewegungen nach Datum gruppieren (die Liste ist schon sortiert, neueste zuerst)
   const heute = new Date().toDateString();
@@ -1168,7 +1188,7 @@ function ansichtGeld() {
     ["auftraege", "Aufträge", String(m.auftraege), "bezahlt", "blau"],
     ["kasse", "Kassenstand", euro(kassenstand()), "jetzt", "navy"],
   ];
-  const tabs = handy ? alleTabs.filter(([id]) => id === "umsatz" || id === "kasse") : alleTabs;
+  const tabs = handy ? ["kasse", "umsatz", "gewinn", "ausgaben", "trinkgeld", "auftraege"].map((id) => alleTabs.find((t) => t[0] === id)) : alleTabs;
   const schritt = { woche: ["Vorwoche", "Nächste Woche"], monat: ["Vormonat", "Nächster Monat"], jahr: ["Vorjahr", "Nächstes Jahr"] }[aktuellerZeitraum()];
   const zeitraumNamen = { woche: "Woche", monat: "Monat", jahr: "Jahr" };
 
@@ -1182,7 +1202,7 @@ function ansichtGeld() {
     </div>
 
     <div class="zeitraum">
-      <div class="segment" role="group" aria-label="Zeitraum wählen" ${handy ? "hidden" : ""}>
+      <div class="segment" role="group" aria-label="Zeitraum wählen">
         <span class="segment__pille" aria-hidden="true" data-ziel="${ZEITRAUM_POS[z.geldZeitraum]}" style="--i:${z.geldPillePrev ?? ZEITRAUM_POS[z.geldZeitraum]}"></span>
         ${Object.keys(ZEITRAUM_POS).map((w) => `<button class="segment__knopf" type="button" aria-pressed="${z.geldZeitraum === w}" data-aktion="zeitraum" data-wert="${w}">${zeitraumNamen[w]}</button>`).join("")}
       </div>
@@ -1193,7 +1213,7 @@ function ansichtGeld() {
       </div>
     </div>
 
-    <div class="${handy ? "raster" : "raster raster--kacheln raster--tabs"}" role="group" aria-label="Kennzahl für das Diagramm wählen">
+    <div class="${handy ? "raster raster--geld-handy" : "raster raster--kacheln raster--tabs"}" role="group" aria-label="Kennzahl für das Diagramm wählen">
       ${tabs.map(([id, titel, wert, info, farbe]) => `<button class="kachel kachel--tab kachel--${farbe}${handy && id === "kasse" ? " kachel--gross" : ""}" type="button" data-aktion="geld-tab" data-wert="${id}">
         <span class="kachel__titel">${titel}</span>
         <span class="kachel__wert">${wert}</span>
@@ -1215,11 +1235,11 @@ function ansichtGeld() {
           </li>`).join("")}</ul>
         </div>` : ""}
       </section>
-      ${aufteilungKarte()}
+      ${handy ? "" : aufteilungKarte()}
       </div>
 
       <section class="karte karte--bewegungen" aria-labelledby="t-bewegungen">
-        ${kartenTitel("t-bewegungen", "himmel", "bewegung", "Bewegungen")}
+        ${kartenTitel("t-bewegungen", "himmel", "bewegung", handy ? "Letzte Bewegungen" : "Bewegungen")}
         ${gruppen.length ? gruppen.map((gr) => `<div class="bewegung-tag">
           <h3>${esc(gr.titel)}</h3>
           <ul class="liste">${gr.eintraege.map(bewegungZeile).join("")}</ul>
@@ -1829,6 +1849,44 @@ const tkInfo = (icon, titel, wert) => `<div class="tk-info">
 // Runder Schnellknopf: Kreis mit Icon, Beschriftung darunter
 const tkKreis = (farbe, icon, titel) => `<span class="tk-rund__kreis tk-rund__kreis--${farbe}" aria-hidden="true"><svg viewBox="0 0 24 24">${icon}</svg></span><span class="tk-rund__titel">${titel}</span>`;
 
+// Countdown in der Terminkarte: "heute, in 3 Std.", "morgen", "in 2 Tagen", "vor 3 Tagen"
+function tkCountdown(d) {
+  if (!d) return "";
+  const jetzt = new Date();
+  const tage = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate())) / 86400000);
+  if (tage === 0) {
+    const std = (d - jetzt) / 3600000;
+    if (std >= 1) return `heute, in ${Math.round(std)} Std.`;
+    if (std > 0) return "heute, gleich";
+    return "heute";
+  }
+  if (tage === 1) return "morgen";
+  if (tage === -1) return "gestern";
+  return tage > 0 ? `in ${tage} Tagen` : `vor ${-tage} Tagen`;
+}
+
+// Initialen für den Avatar-Kreis: "Anna Müller" wird "AM"
+const tkInitialen = (name) =>
+  String(name || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w.charAt(0))
+    .join("")
+    .toUpperCase();
+
+// Schnellknopf: fehlt die Angabe, bleibt er sichtbar, ist aber ausgegraut und nicht anklickbar
+const tkSchnell = (ok, href, farbe, icon, titel, attr = "") =>
+  ok
+    ? `<a class="tk-rund" href="${esc(href)}"${attr}>${tkKreis(farbe, icon, titel)}</a>`
+    : `<span class="tk-rund tk-rund--aus" aria-disabled="true" aria-label="${titel}: keine Angabe" title="${titel}: keine Angabe">${tkKreis("aus", icon, titel)}</span>`;
+
+// Gruppe mit Überschrift; ohne Zeilen gar keine Gruppe
+const tkGruppe = (titel, zeilen) => {
+  const da = zeilen.filter(Boolean);
+  return da.length ? `<section class="tk-gruppe"><h3 class="tk-gruppe__titel">${titel}</h3><dl class="tk-infos">${da.join("")}</dl></section>` : "";
+};
+
 function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
   const k = kundeVon(a.kunde_id);
   const d = a.datum ? new Date(a.datum) : null;
@@ -1844,46 +1902,65 @@ function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
   const fensterN = Number(a.fenster_normal || 0);
   const fensterB = Number(a.fenster_boden || 0);
   const stunden = zahl(a.stunden);
+  const besuche = k ? auftraegeVon(k.id).filter((x) => zahl(x.bekommen) !== null) : [];
+  const quote = k ? trinkgeldQuote(auftraegeVon(k.id)) : null;
+  // Uhrzeit von–bis, wenn eine Dauer eingetragen ist
+  const ende = d && stunden ? new Date(d.getTime() + stunden * 3600000) : null;
+  const uhr = d ? `${fmtUhr.format(d)}${ende ? ` – ${fmtUhr.format(ende)}` : ""}` : "";
 
   const kopf = `<header class="tk-kopf">
-      <button class="tk-bearbeiten" type="button" data-aktion="auftrag-bearbeiten" data-id="${esc(a.id)}" data-tk-bearbeiten aria-label="Bearbeiten">
+      <button class="tk-bearbeiten" type="button" data-aktion="auftrag-bearbeiten" data-id="${esc(a.id)}" data-tk-bearbeiten aria-label="Auftrag bearbeiten">
         <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.stift}</svg><span>Bearbeiten</span>
       </button>
+      <div class="tk-kopf__status">
+        ${terminStatusChip(a)}
+        ${d ? `<span class="tk-countdown">${esc(tkCountdown(d))}</span>` : ""}
+      </div>
       <p class="tk-wochentag">${d ? esc(fmtWochentag.format(d)) : "Ohne Termin"}</p>
       <h2 class="tk-datum" id="tk-titel">${d ? esc(fmtTagMonat.format(d)) : "Termin offen"}</h2>
-      <p class="tk-uhr">${d ? `${esc(fmtUhr.format(d))}<span> Uhr</span>` : "–"}</p>
-      <div class="tk-chips">
-        <span class="tk-chip">${esc(a.leistung)}</span>
-        ${terminStatusChip(a)}
-        ${KANAELE[a.kanal] ? `<span class="tk-chip tk-chip--kanal">${kanalMarke(a.kanal)}${esc(kanalName(a.kanal))}</span>` : ""}
-      </div>
+      ${uhr ? `<p class="tk-uhr">${esc(uhr)}<span> Uhr</span></p>` : ""}
     </header>`;
 
   const kunde = k
     ? `<a class="tk-kunde" href="#kunde/${esc(k.id)}" data-tk-kunde>
-        <span class="tk-kunde__name">${esc(k.name)}</span>
-        <span class="tk-kunde__zur">Zur Kundin/zum Kunden →</span>
+        <span class="tk-avatar" aria-hidden="true">${esc(tkInitialen(k.name))}</span>
+        <span class="tk-kunde__text">
+          <span class="tk-kunde__name">${esc(k.name)}</span>
+          <span class="tk-kunde__meta">
+            ${k.status === "stamm" ? `<span class="tk-stamm">${badge("navy", "kunden")}Stammkunde</span>` : ""}
+            <span>${besuche.length} ${besuche.length === 1 ? "bezahlter Besuch" : "bezahlte Besuche"}${quote !== null ? ` · Ø ${quote} % Trinkgeld` : ""}</span>
+          </span>
+          <span class="tk-kunde__zur">Kundenseite öffnen</span>
+        </span>
       </a>`
     : `<p class="tk-kunde tk-kunde--leer">Kunde nicht mehr vorhanden</p>`;
 
-  const schnell = [
-    tel && `<a class="tk-rund" href="tel:${esc(tel)}">${tkKreis("blau", ICONS.kontakt, "Anrufen")}</a>`,
-    k?.email && `<a class="tk-rund" href="mailto:${esc(k.email)}">${tkKreis("violett", ICONS.mail, "E-Mail")}</a>`,
-    adresse && `<a class="tk-rund" href="${esc(karte)}" target="_blank" rel="noopener">${tkKreis("gruen", TK_ICON.pin, "Route")}</a>`,
-  ].filter(Boolean).join("");
+  // Anrufen, Mail, Route: immer drei Kacheln gleicher Größe
+  const schnell = `<div class="tk-schnell">
+      ${tkSchnell(!!tel, `tel:${tel}`, "blau", ICONS.kontakt, "Anrufen")}
+      ${tkSchnell(!!k?.email, `mailto:${k?.email || ""}`, "violett", ICONS.mail, "Mail")}
+      ${tkSchnell(!!adresse, karte, "gruen", TK_ICON.pin, "Route", ' target="_blank" rel="noopener"')}
+    </div>`;
 
-  const infos = [
+  const auftrag = tkGruppe("Auftrag", [
+    a.leistung && tkInfo(ICONS.aufgabe, "Leistung", esc(a.leistung)),
+    fensterN + fensterB > 0 && tkInfo(TK_ICON.fenster, "Umfang", `${fensterN} normale · ${fensterB} bodentiefe`),
+    stunden !== null && tkInfo(ICONS.uhr, "Dauer", `${esc(String(stunden).replace(".", ","))} Std.`),
+  ]);
+
+  const kontakt = tkGruppe("Kontakt", [
     k?.adresse && tkInfo(TK_ICON.pin, "Adresse", esc(k.adresse)),
     k?.telefon && tkInfo(ICONS.kontakt, "Telefon", esc(k.telefon)),
     k?.email && tkInfo(ICONS.mail, "E-Mail", esc(k.email)),
-    fensterN + fensterB > 0 && tkInfo(TK_ICON.fenster, "Fenster", `${fensterN} normale · ${fensterB} bodentiefe`),
-    stunden !== null && tkInfo(ICONS.uhr, "Stunden", `${esc(String(stunden).replace(".", ","))} h`),
-    geschaetzt !== null && tkInfo(ICONS.geld, "Geschätzter Preis", euro(geschaetzt)),
+    KANAELE[a.kanal] && tkInfo(ICONS.web, "Kontakt über", `${kanalMarke(a.kanal)}${esc(kanalName(a.kanal))}`),
+  ]);
+
+  const verlauf = tkGruppe("Verlauf", [
     k?.weiter && tkInfo(ICONS.bewegung, "Wie geht's weiter?", esc(k.weiter)),
     notiz && tkInfo(ICONS.stift, "Letzte Notiz", `${esc(notiz.text)} <small class="leise">· ${esc(fmtDatum.format(new Date(notiz.erstellt)))}</small>`),
-  ].filter(Boolean).join("");
+  ]);
 
-  // Bezahlt-Bereich: das Wichtigste auf der Karte
+  // Bezahlt-Bereich: eigene Ebene, das Wichtigste auf der Karte
   let geld;
   if (bezahlt && !bearbeiten) {
     const tg = trinkgeld(a);
@@ -1891,11 +1968,12 @@ function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
       <div class="tk-geld__zeile">
         <span class="tk-haken${erfolg ? " tk-haken--neu" : ""}" aria-hidden="true"><svg viewBox="0 0 24 24">${TK_ICON.haken}</svg></span>
         <div class="tk-geld__text">
-          <p class="tk-geld__titel" id="tk-geld-titel">Bezahlt: ${euro(a.bekommen)}${tg ? ` · +${euro(tg)} Trinkgeld` : ""}</p>
-          ${erfolg ? `<p class="tk-geld__ok">${euro(a.bekommen)} eingetragen</p>` : ""}
+          <p class="tk-geld__titel" id="tk-geld-titel">Bezahlt: ${euro(a.bekommen)}</p>
+          <p class="tk-geld__werte">${geschaetzt !== null ? `Geschätzt ${euro(geschaetzt)}` : "Kein Schätzwert"}${tg ? ` · <strong>+${euro(tg)} Trinkgeld</strong>` : ""}</p>
+          ${erfolg ? `<p class="tk-geld__ok" role="status">${euro(a.bekommen)} eingetragen</p>` : ""}
         </div>
-        <button class="knopf knopf--klein" type="button" data-tk-aendern>Ändern</button>
       </div>
+      <button class="knopf knopf--klein tk-aendern" type="button" data-tk-aendern>Betrag ändern</button>
     </section>`;
   } else {
     const leise = zukunft && !bezahlt && !bearbeiten;
@@ -1905,24 +1983,33 @@ function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
     geld = `<section class="tk-geld${leise ? " tk-geld--leise" : ""}" aria-labelledby="tk-geld-titel">
       <h3 class="tk-geld__titel" id="tk-geld-titel">${titel}</h3>
       <form class="tk-geld__form" data-tk-form>
-        <div class="tk-geld__reihe">
-          <span class="tk-betrag">
-            <input class="tk-betrag__feld" name="bekommen" type="text" inputmode="decimal" autocomplete="off" value="${esc(text)}" aria-label="Wirklich bekommen in Euro" data-tk-betrag />
-            <span class="tk-betrag__euro" aria-hidden="true">€</span>
-          </span>
-          <button class="knopf knopf--voll tk-speichern" type="submit">Speichern</button>
+        <div class="tk-vergleich">
+          <div class="tk-vergleich__schaetz">
+            <span class="tk-vergleich__label">Geschätzt</span>
+            <span class="tk-vergleich__wert">${geschaetzt !== null ? esc(euro(geschaetzt)) : "–"}</span>
+          </div>
+          <label class="tk-betrag">
+            <span class="tk-vergleich__label">Wirklich bekommen</span>
+            <span class="tk-betrag__box">
+              <input class="tk-betrag__feld" name="bekommen" type="text" inputmode="decimal" autocomplete="off" value="${esc(text)}" aria-label="Wirklich bekommen in Euro" data-tk-betrag />
+              <span class="tk-betrag__euro" aria-hidden="true">€</span>
+            </span>
+          </label>
         </div>
         <p class="tk-tg" data-tk-tg>${tgTextFuer(betragLesen(text), geschaetzt)}</p>
         <p class="meldung minus" data-tk-fehler role="alert"></p>
-        ${bearbeiten ? `<div><button class="knopf knopf--klein knopf--leise" type="button" data-tk-abbrechen>Abbrechen</button></div>` : ""}
+        <div class="tk-aktionen">
+          ${bearbeiten ? `<button class="knopf knopf--leise" type="button" data-tk-abbrechen>Abbrechen</button>` : ""}
+          <button class="knopf knopf--voll tk-speichern" type="submit">Speichern</button>
+        </div>
       </form>
     </section>`;
   }
 
   return `${kopf}
     ${kunde}
-    <div class="tk-schnell">${schnell}</div>
-    ${infos ? `<dl class="tk-infos">${infos}</dl>` : ""}
+    ${schnell}
+    ${auftrag}${kontakt}${verlauf}
     ${geld}`;
 }
 
@@ -2442,3 +2529,42 @@ function dialogPasswort() {
     if (session && !db) mitSitzung(session);
   });
 })();
+
+/* ===================== Handy-Menü und Passwort anzeigen ===================== */
+
+// Am Handy ersetzt das Menü den Kopf-Knopf: Passwort und Abmelden laufen über dieselben Knöpfe wie am Computer
+const menueSheet = $("[data-menue-sheet]");
+$("[data-menue]").addEventListener("click", () => {
+  $("[data-menue-name]").textContent = ich ? `Angemeldet als ${ich}` : "";
+  $("[data-menue-passwort]").hidden = $("[data-passwort-setzen]").hidden;
+  $("[data-menue-abmelden]").hidden = $("[data-abmelden]").hidden;
+  menueSheet.showModal();
+});
+
+menueSheet.addEventListener("click", (e) => {
+  const ziel = e.target;
+  if (ziel === menueSheet || ziel.closest("[data-menue-zu], [data-menue-link]")) {
+    menueSheet.close();
+    return;
+  }
+  if (ziel.closest("[data-menue-passwort]")) {
+    menueSheet.close();
+    $("[data-passwort-setzen]").click();
+    return;
+  }
+  if (ziel.closest("[data-menue-abmelden]")) {
+    menueSheet.close();
+    $("[data-abmelden]").click();
+  }
+});
+
+// Passwort-Feld am Anmeldeformular: anzeigen oder verbergen
+document.addEventListener("click", (e) => {
+  const knopf = e.target.closest?.("[data-passwort-zeigen]");
+  if (!knopf) return;
+  const feld = knopf.parentElement.querySelector("input");
+  const zeigen = feld.type === "password";
+  feld.type = zeigen ? "text" : "password";
+  knopf.setAttribute("aria-pressed", String(zeigen));
+  knopf.setAttribute("aria-label", zeigen ? "Passwort verbergen" : "Passwort anzeigen");
+});
