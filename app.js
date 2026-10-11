@@ -16,8 +16,8 @@ const STATUS_NAME = Object.fromEntries(STATUS.map((s) => [s.id, s.name]));
 const LEISTUNGEN = ["Fensterreinigung", "Felgenreinigung", "Nachbarschaftshilfe"];
 const KATEGORIEN = ["Putzmittel", "Werkzeug", "Fahrt", "Werbung", "Sonstiges"];
 const PERSONEN = ["Louis", "Lukas"];
-const STUNDENSATZ = 15;
-const MINDEST = 15;
+// Preise stehen in den Einstellungen (Dashboard → Einstellungen); das hier ist nur der Rückfall
+const PREIS_STANDARD = { preis_normal: 5, preis_boden: 10, mindestpreis: 25, stundensatz: 15 };
 const STAMM_AB = 3; // bezahlte Besuche, ab denen jemand Stammkunde ist
 
 const daten = Object.fromEntries(TABELLEN.map((t) => [t, []]));
@@ -133,7 +133,7 @@ function lokaleDb() {
   }
   if (!speicher.einstellungen || speicher.einstellungen.length === 0) {
     speicher.einstellungen = [
-      { id: 1, slot_minuten: 60, slot_schritt: 30, vorlauf_stunden: 12, tage_voraus: 14 },
+      { id: 1, slot_minuten: 60, slot_schritt: 30, vorlauf_stunden: 12, tage_voraus: 14, ...PREIS_STANDARD },
     ];
   }
   schreiben(speicher);
@@ -231,12 +231,24 @@ const kundeVon = (id) => daten.kunden.find((k) => k.id === id);
 const auftraegeVon = (id) => daten.auftraege.filter((a) => a.kunde_id === id);
 const auftragDatum = (a) => new Date(a.datum || a.erstellt);
 
-function schaetzen({ leistung, fenster_normal, fenster_boden, stunden }) {
+// Aktuelle Preise aus den Einstellungen, fehlende Werte mit dem Standard aufgefüllt
+function preise() {
+  const e = daten.einstellungen?.[0] || {};
+  const p = {};
+  for (const [feld, standard] of Object.entries(PREIS_STANDARD)) p[feld] = zahl(e[feld]) ?? standard;
+  return p;
+}
+
+// Festpreis: keine Rechnung, der Preis wird von Hand eingetragen
+function schaetzen({ leistung, fenster_normal, fenster_boden, stunden, preisart, stundensatz }) {
+  const p = preise();
   if (leistung === "Fensterreinigung") {
-    const summe = (Number(fenster_normal) || 0) * 4 + (Number(fenster_boden) || 0) * 5;
-    return summe ? Math.max(summe, MINDEST) : null;
+    const summe = (Number(fenster_normal) || 0) * p.preis_normal + (Number(fenster_boden) || 0) * p.preis_boden;
+    return summe ? Math.max(summe, p.mindestpreis) : null;
   }
-  return stunden ? Math.round(Number(stunden) * STUNDENSATZ * 100) / 100 : null;
+  if (preisart === "fest") return null;
+  const satz = zahl(stundensatz) ?? p.stundensatz;
+  return stunden ? Math.round(Number(stunden) * satz * 100) / 100 : null;
 }
 
 const trinkgeld = (a) =>
@@ -1275,6 +1287,31 @@ function ansichtAufgaben() {
     ${istIos ? `<p class="hinweis">„In OutPost“ legt die Aufgabe in deiner Erinnerungen-Liste „Klar Glas“ an.</p>` : ""}`;
 }
 
+// Einstellungen (nur am Computer verlinkt): Preise und Stundenlohn
+function ansichtEinstellungen() {
+  const p = preise();
+  const feld = (name, titel, schritt, hinweis = "") => `<label class="feld"><span>${titel}</span>
+      <span class="eingabe-euro"><input type="number" class="eingabe" inputmode="decimal" min="0" step="${schritt}" value="${p[name]}" data-einstell="true" data-einstell-field="${name}" /><span aria-hidden="true">€</span></span>
+      ${hinweis ? `<small class="leise">${hinweis}</small>` : ""}</label>`;
+  return `
+    <div class="kopfzeile"><div><h1>Einstellungen</h1><p class="leise">Änderungen gelten sofort für neue Aufträge und Website-Anfragen</p></div></div>
+    <div class="raster raster--zwei">
+      <section class="karte">
+        ${kartenTitel("t-preise-fenster", "blau", "zahl", "Fensterreinigung")}
+        <div class="feldreihe">
+          ${feld("preis_normal", "Normales Fenster", "0.5")}
+          ${feld("preis_boden", "Bodentiefes Fenster", "0.5")}
+        </div>
+        ${feld("mindestpreis", "Mindestauftrag", "1", "Kleinere Aufträge werden auf diesen Betrag aufgerundet.")}
+      </section>
+      <section class="karte">
+        ${kartenTitel("t-preise-stunde", "bernstein", "uhr", "Nachbarschaftshilfe & Felgen")}
+        ${feld("stundensatz", "Stundenlohn", "0.5", "Vorschlag für neue Aufträge. Im Auftrag selbst kannst du ihn ändern oder auf Festpreis umstellen.")}
+      </section>
+    </div>
+    <p class="hinweis">Die Preise, die auf der Website stehen, ändern sich dadurch nicht automatisch – die Texte dort müssen separat angepasst werden. Termine, Dauer und Kalender stellst du unter <a href="#zeiten">Wann wir können</a> ein.</p>`;
+}
+
 function ansichtZeiten() {
   const wochentage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
   const einstell = daten.einstellungen[0] || { id: 1, slot_minuten: 60, slot_schritt: 30, vorlauf_stunden: 12, tage_voraus: 14 };
@@ -1477,7 +1514,7 @@ function render() {
   const fokusId = aktiv && aktiv.id;
   const cursor = fokusId && "selectionStart" in aktiv ? aktiv.selectionStart : null;
 
-  const ansichten = { uebersicht: ansichtUebersicht, kunden: ansichtKunden, kunde: () => ansichtKunde(id), kalender: ansichtKalender, geld: ansichtGeld, aufgaben: ansichtAufgaben, zeiten: ansichtZeiten };
+  const ansichten = { uebersicht: ansichtUebersicht, kunden: ansichtKunden, kunde: () => ansichtKunde(id), kalender: ansichtKalender, geld: ansichtGeld, aufgaben: ansichtAufgaben, zeiten: ansichtZeiten, einstellungen: ansichtEinstellungen };
   inhalt.innerHTML = (ansichten[bereich] || ansichtUebersicht)();
   // Die Pille im Zeitraum-Schalter gleitet von der alten Stufe zur neuen
   const pille = $(".segment__pille", inhalt);
@@ -1495,6 +1532,9 @@ function render() {
   const zeitenLink = $(".kopf__zeiten");
   if (bereich === "zeiten") zeitenLink.setAttribute("aria-current", "page");
   else zeitenLink.removeAttribute("aria-current");
+  const einstLink = $(".kopf__einst");
+  if (bereich === "einstellungen") einstLink.setAttribute("aria-current", "page");
+  else einstLink.removeAttribute("aria-current");
 
   if (fokusId) {
     const wieder = document.getElementById(fokusId);
@@ -1661,6 +1701,8 @@ function dialogAuftrag(a = {}, kundeId = null) {
     return;
   }
   const leistung = a.leistung || "Fensterreinigung";
+  const p = preise();
+  const preisart = a.preisart || "stunden";
   const kanalVorbelegt = a.kanal || (a.id ? null : kanalAusKunde(kundeVon(kid)));
   oeffneDialog({
     titel: a.id ? "Auftrag bearbeiten" : "Neuer Auftrag",
@@ -1671,12 +1713,22 @@ function dialogAuftrag(a = {}, kundeId = null) {
         <label class="feld"><span>Termin</span><input name="datum" type="datetime-local" value="${esc(isoZuLokal(a.datum))}" /></label>
       </div>
       <div class="feldreihe" data-nur-fenster>
-        <label class="feld"><span>Normale Fenster (4 €)</span><input name="fenster_normal" type="number" inputmode="numeric" min="0" value="${esc(a.fenster_normal ?? 0)}" /></label>
-        <label class="feld"><span>Bodentiefe Fenster (5 €)</span><input name="fenster_boden" type="number" inputmode="numeric" min="0" value="${esc(a.fenster_boden ?? 0)}" /></label>
+        <label class="feld"><span>Normale Fenster (${euro(p.preis_normal)})</span><input name="fenster_normal" type="number" inputmode="numeric" min="0" value="${esc(a.fenster_normal ?? 0)}" /></label>
+        <label class="feld"><span>Bodentiefe Fenster (${euro(p.preis_boden)})</span><input name="fenster_boden" type="number" inputmode="numeric" min="0" value="${esc(a.fenster_boden ?? 0)}" /></label>
       </div>
-      <label class="feld" data-nur-stunden><span>Stunden (${STUNDENSATZ} € pro Stunde)</span><input name="stunden" type="number" inputmode="decimal" min="0" step="0.25" value="${esc(a.stunden ?? "")}" /></label>
+      <fieldset class="feld preisart" data-nur-stunden>
+        <legend>Abrechnung</legend>
+        <div class="segment segment--preisart" role="radiogroup" aria-label="Abrechnung">
+          <label class="segment__knopf"><input type="radio" name="preisart" value="stunden" ${preisart === "stunden" ? "checked" : ""} /><span>Stundenlohn</span></label>
+          <label class="segment__knopf"><input type="radio" name="preisart" value="fest" ${preisart === "fest" ? "checked" : ""} /><span>Festpreis</span></label>
+        </div>
+      </fieldset>
+      <div class="feldreihe" data-nur-stundenlohn>
+        <label class="feld"><span>Stunden</span><input name="stunden" type="number" inputmode="decimal" min="0" step="0.25" value="${esc(a.stunden ?? "")}" /></label>
+        <label class="feld"><span>Stundenlohn (€)</span><input name="stundensatz" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(a.stundensatz ?? p.stundensatz)}" /></label>
+      </div>
       <div class="feldreihe">
-        <label class="feld"><span>Geschätzter Preis (€)</span><input name="geschaetzt" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(a.geschaetzt ?? "")}" data-geschaetzt /></label>
+        <label class="feld"><span data-geschaetzt-label>Geschätzter Preis (€)</span><input name="geschaetzt" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(a.geschaetzt ?? "")}" data-geschaetzt /></label>
         <label class="feld"><span>Wirklich bekommen (€)</span><input name="bekommen" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(a.bekommen ?? "")}" placeholder="nach dem Termin" /></label>
       </div>
       <p class="hinweis" data-schaetz-hinweis></p>
@@ -1689,9 +1741,15 @@ function dialogAuftrag(a = {}, kundeId = null) {
         const werte = Object.fromEntries(new FormData(form).entries());
         const fensterArt = werte.leistung === "Fensterreinigung";
         $("[data-nur-fenster]", form).hidden = !fensterArt;
+        const fest = !fensterArt && werte.preisart === "fest";
         $("[data-nur-stunden]", form).hidden = fensterArt;
+        $("[data-nur-stundenlohn]", form).hidden = fensterArt || fest;
+        $("[data-geschaetzt-label]", form).textContent = fest ? "Festpreis (€)" : "Geschätzter Preis (€)";
         const s = schaetzen(werte);
-        $("[data-schaetz-hinweis]", form).textContent = s === null ? "" : `Rechnung: ${fensterArt ? `${werte.fenster_normal || 0} × 4 € + ${werte.fenster_boden || 0} × 5 €, mindestens ${MINDEST} €` : `${Number(werte.stunden).toLocaleString("de-DE")} h × ${STUNDENSATZ} €`} = ${euro(s)}`;
+        const satz = zahl(werte.stundensatz) ?? p.stundensatz;
+        $("[data-schaetz-hinweis]", form).textContent = fest
+          ? "Festpreis: Betrag oben direkt eintragen."
+          : s === null ? "" : `Rechnung: ${fensterArt ? `${werte.fenster_normal || 0} × ${euro(p.preis_normal)} + ${werte.fenster_boden || 0} × ${euro(p.preis_boden)}, mindestens ${euro(p.mindestpreis)}` : `${Number(werte.stunden).toLocaleString("de-DE")} h × ${euro(satz)}`} = ${euro(s)}`;
         if (!vonHand && s !== null) feld.value = s;
       };
       feld.addEventListener("input", () => (vonHand = true));
@@ -1707,7 +1765,9 @@ function dialogAuftrag(a = {}, kundeId = null) {
         datum: lokalZuIso(f.datum),
         fenster_normal: fensterArt ? Number(f.fenster_normal) || 0 : 0,
         fenster_boden: fensterArt ? Number(f.fenster_boden) || 0 : 0,
-        stunden: fensterArt ? null : zahl(f.stunden),
+        stunden: fensterArt || f.preisart === "fest" ? null : zahl(f.stunden),
+        preisart: fensterArt ? "stunden" : f.preisart || "stunden",
+        stundensatz: fensterArt || f.preisart === "fest" ? null : zahl(f.stundensatz),
         geschaetzt: zahl(f.geschaetzt),
         bekommen: zahl(f.bekommen),
         abgesagt: Boolean(f.abgesagt),
@@ -2355,7 +2415,7 @@ inhalt.addEventListener("change", async (event) => {
     zeigeToast("Gespeichert");
   } else if (el.dataset.einstell && el.dataset.einstellField) {
     const field = el.dataset.einstellField;
-    await aendern("einstellungen", "1", { [field]: Number(el.value) });
+    await aendern("einstellungen", daten.einstellungen[0]?.id ?? 1, { [field]: Number(el.value) });
     zeigeToast("Gespeichert");
   }
 });

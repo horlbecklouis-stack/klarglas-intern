@@ -3488,3 +3488,38 @@ a.kachel:active,
 .person--louis { background: var(--blau-wash); color: var(--blau-text); box-shadow: inset 0 0 0 1px rgba(43, 92, 255, 0.25); }
 .person--lukas { background: var(--bernstein-wash); color: var(--bernstein-text); box-shadow: inset 0 0 0 1px rgba(208, 138, 0, 0.3); }
 .person--beide { background: var(--surface); color: var(--navy); }
+
+/* Einstellungen-Knopf direkt neben „Wann wir können“ (nur Computer, am Handy wie dieser ausgeblendet) */
+.kopf__zeiten:has(+ .kopf__einst) { margin-right: 0; }
+.kopf__einst { margin-left: 0.5rem; margin-right: auto; }
+
+/* Eingabe mit €-Zeichen */
+.eingabe-euro { position: relative; display: block; }
+.eingabe-euro .eingabe { width: 100%; padding-right: 2.2rem; }
+.eingabe-euro > span { position: absolute; right: 0.9rem; top: 50%; transform: translateY(-50%); color: var(--ink-3, #5a6172); font-weight: 600; pointer-events: none; }
+
+/* Auftrag: Stundenlohn oder Festpreis */
+.preisart { border: 0; padding: 0; margin: 0; min-width: 0; }
+.preisart legend { padding: 0; margin-bottom: 0.4rem; font-size: 0.875rem; font-weight: 600; }
+.segment--preisart {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--pill);
+  background: var(--surface);
+}
+.segment--preisart .segment__knopf {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border-radius: var(--pill);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color var(--dur-hover, 150ms) ease, color var(--dur-hover, 150ms) ease;
+}
+.segment--preisart input { position: absolute; opacity: 0; pointer-events: none; }
+.segment--preisart .segment__knopf:has(input:checked) { background: var(--navy); color: var(--cream); }
+.segment--preisart .segment__knopf:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
