@@ -133,7 +133,7 @@ function lokaleDb() {
   }
   if (!speicher.einstellungen || speicher.einstellungen.length === 0) {
     speicher.einstellungen = [
-      { id: 1, slot_minuten: 60, vorlauf_stunden: 12, tage_voraus: 14 },
+      { id: 1, slot_minuten: 60, slot_schritt: 30, vorlauf_stunden: 12, tage_voraus: 14 },
     ];
   }
   schreiben(speicher);
@@ -1271,7 +1271,7 @@ function ansichtAufgaben() {
 
 function ansichtZeiten() {
   const wochentage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
-  const einstell = daten.einstellungen[0] || { id: 1, slot_minuten: 60, vorlauf_stunden: 12, tage_voraus: 14 };
+  const einstell = daten.einstellungen[0] || { id: 1, slot_minuten: 60, slot_schritt: 30, vorlauf_stunden: 12, tage_voraus: 14 };
   const zeiten = daten.verfuegbarkeit || [];
 
   return `
@@ -1302,6 +1302,8 @@ function ansichtZeiten() {
     <section class="karte">
       ${kartenTitel("t-einstell", "violett", "zahl", "Einstellungen")}
       <label class="feld"><span>Termindauer (Minuten)</span><input type="number" class="eingabe" value="${einstell.slot_minuten}" min="15" step="15" data-einstell="true" data-einstell-field="slot_minuten" /></label>
+      <label class="feld"><span>Startzeiten im Abstand von</span><select class="eingabe" data-einstell="true" data-einstell-field="slot_schritt">${[15, 30, 60].map((m) => `<option value="${m}" ${(einstell.slot_schritt ?? 30) === m ? "selected" : ""}>${m} Minuten</option>`).join("")}</select></label>
+      <p class="hinweis">Beispiel: 90 Minuten Dauer und 30 Minuten Abstand ergibt 15:00, 15:30, 16:00 … – solange die ganze Dauer frei ist.</p>
       <label class="feld"><span>Vorlauf (Stunden)</span><input type="number" class="eingabe" value="${einstell.vorlauf_stunden}" min="0" step="1" data-einstell="true" data-einstell-field="vorlauf_stunden" /></label>
       <label class="feld"><span>Wie weit im Voraus buchbar (Tage)</span><input type="number" class="eingabe" value="${einstell.tage_voraus}" min="1" step="1" data-einstell="true" data-einstell-field="tage_voraus" /></label>
     </section>
