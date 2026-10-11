@@ -3483,3 +3483,8 @@ a.kachel:active,
     border-radius: 22px 22px 0 0;
   }
 }
+
+/* Wer ist dran: Louis blau, Lukas bernstein, Beide neutral */
+.person--louis { background: var(--blau-wash); color: var(--blau-text); box-shadow: inset 0 0 0 1px rgba(43, 92, 255, 0.25); }
+.person--lukas { background: var(--bernstein-wash); color: var(--bernstein-text); box-shadow: inset 0 0 0 1px rgba(208, 138, 0, 0.3); }
+.person--beide { background: var(--surface); color: var(--navy); }

@@ -503,7 +503,7 @@ function aufgabeZeile(a) {
       <button class="zeile__titel" type="button" data-aktion="aufgabe-bearbeiten" data-id="${esc(a.id)}" style="all:unset;cursor:pointer;font-weight:650">${esc(a.titel)}</button>
       ${unter ? `<span class="zeile__unter">${unter}</span>` : ""}
     </span>
-    <span class="person">${esc(a.zustaendig)}</span>
+    ${personMarke(a.zustaendig)}
     ${a.erledigt ? "" : outpostKnopf(a)}
   </li>`;
 }
@@ -984,6 +984,12 @@ function terminListeHandy(termine) {
   </section>`;
 }
 
+// Louis und Lukas sehen sich zu ähnlich – deshalb jeder mit eigener Farbe
+function personMarke(name) {
+  const art = { Louis: "louis", Lukas: "lukas" }[name] || "beide";
+  return `<span class="person person--${art}">${esc(name || "Beide")}</span>`;
+}
+
 // Alle aktiven Kalender aus der Tabelle; config.js nur als Rückfall, solange keiner eingetragen ist
 function sichtbareKalender() {
   const liste = daten.kalender.filter((k) => k.aktiv !== false)
@@ -1373,7 +1379,7 @@ function abschnittBlocker() {
       <p class="hinweis">Zeiten, in denen ihr nicht könnt, z. B. Urlaub oder Klausur. Bleiben nur hier im Dashboard und stehen nicht im Google-Kalender.</p>
       ${kommend.length ? `<ul class="liste">${kommend.map((b) => `<li class="zeile">
         <span class="zeile__haupt"><span class="zeile__titel">${esc(b.grund || "Blocker")}</span><span class="zeile__unter">${zeitraum(b)}</span></span>
-        <span class="person">${esc(b.wer)}</span>
+        ${personMarke(b.wer)}
         <button class="knopf knopf--klein knopf--leise" type="button" data-aktion="blocker-entfernen" data-id="${esc(b.id)}" aria-label="Blocker löschen">×</button>
       </li>`).join("")}</ul>` : `<p class="leer">Keine Blocker eingetragen.</p>`}
     </section>`;
