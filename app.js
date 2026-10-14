@@ -790,14 +790,17 @@ function ansichtUebersicht() {
     ${handy ? "" : kanalAuswertung()}`;
 }
 
-// Dezent (nur Desktop): über welchen Kontaktweg die Aufträge zu uns kommen, als Ring-Diagramm
+// Dezent (nur Desktop): über welchen Kontaktweg alle Kunden zu uns kommen, als Ring-Diagramm
+const OHNE_KANAL = { name: "Ohne Angabe", farbe: "#9AA3B2", icon: "kontakt" };
 function kanalAuswertung() {
-  const zaehl = Object.fromEntries(Object.keys(KANAELE).map((id) => [id, 0]));
-  daten.auftraege.forEach((a) => {
-    if (a.kanal in zaehl) zaehl[a.kanal] += 1;
+  const zaehl = Object.fromEntries([...Object.keys(KANAELE), "ohne"].map((id) => [id, 0]));
+  daten.kunden.forEach((k) => {
+    const kanal = kanalVonKunde(k);
+    zaehl[kanal in KANAELE ? kanal : "ohne"] += 1;
   });
   const gesamt = Object.values(zaehl).reduce((s, n) => s + n, 0);
-  const teile = Object.entries(KANAELE).map(([id, k]) => ({
+  const arten = Object.entries(KANAELE).concat(zaehl.ohne ? [["ohne", OHNE_KANAL]] : []);
+  const teile = arten.map(([id, k]) => ({
     id,
     name: k.name,
     farbe: k.farbe,
@@ -823,7 +826,7 @@ function kanalAuswertung() {
     .join("");
   const beschriftung = gesamt
     ? teile.map((t) => `${t.name} ${t.n} (${t.p} %)`).join(", ")
-    : "Noch keine Aufträge mit Angabe zum Kontaktweg";
+    : "Noch keine Kunden";
 
   const legende = teile
     .map((t) => `<li class="kanal-legende__zeile">
@@ -846,7 +849,7 @@ function kanalAuswertung() {
         </svg>
         <div class="kanal-donut__mitte" aria-hidden="true">
           <b>${gesamt || "–"}</b>
-          <span>Aufträge mit Kanal</span>
+          <span>Kunden</span>
         </div>
       </div>
       <div class="kanal-karte__rechts">
@@ -2362,32 +2365,27 @@ function karteZurueckOeffnen() {
 
 /* ===================== Neue Anfrage: großes Popup ===================== */
 
-// Welche Anfragen dieses Gerät schon gezeigt hat; ohne Speicher kommt das Popup halt nochmal
-const GESEHEN_SCHLUESSEL = "klarglas-anfragen-gesehen";
-function gesehenListe() {
-  try {
-    return JSON.parse(localStorage.getItem(GESEHEN_SCHLUESSEL)) || [];
-  } catch {
-    return [];
-  }
-}
-function anfrageGesehen(id) {
-  const liste = gesehenListe();
-  if (liste.includes(id)) return;
-  try {
-    localStorage.setItem(GESEHEN_SCHLUESSEL, JSON.stringify([...liste, id].slice(-200)));
-  } catch {}
-}
+// Das Popup bleibt auf jedem Gerät, bis jemand bestätigt, ablehnt oder einen anderen Termin vorschlägt.
+// „Später“ schiebt es nur weg, bis die App wieder geöffnet wird.
+const spaeterListe = new Set();
+const inArbeit = new Set();
+try {
+  localStorage.removeItem("klarglas-anfragen-gesehen");
+} catch {}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  spaeterListe.clear();
+  anfragePopupPruefen();
+});
 
 // Offene Wunschtermine und frische Website-Anfragen ohne Termin
 const neueAnfragen = () => {
-  const vor7Tagen = Date.now() - 7 * 864e5;
   return daten.auftraege
     .filter(
       (a) =>
         !a.abgesagt &&
         (a.termin_status === "angefragt" ||
-          (a.kanal === "website" && !a.datum && kundeVon(a.kunde_id)?.status === "neu" && new Date(a.erstellt) > vor7Tagen))
+          (a.kanal === "website" && !a.datum && kundeVon(a.kunde_id)?.status === "neu"))
     )
     .sort((a, b) => new Date(b.erstellt || 0) - new Date(a.erstellt || 0));
 };
@@ -2396,10 +2394,10 @@ const anfragePopup = $("[data-anfrage-popup]");
 
 function anfragePopupPruefen() {
   if (!db || anfragePopup.open || $("[data-dialog]").open || diagrammDialog.open || terminkarte.open || $("[data-menue-sheet]").open) return;
-  const gesehen = gesehenListe();
-  const offen = neueAnfragen().filter((a) => !gesehen.includes(a.id));
+  const offen = neueAnfragen().filter((a) => !spaeterListe.has(a.id) && !inArbeit.has(a.id));
   if (!offen.length) return;
   const a = offen[0];
+  anfragePopup.dataset.id = a.id;
   const k = kundeVon(a.kunde_id) || {};
   const d = a.datum ? new Date(a.datum) : null;
   const fenster = a.fenster_normal || a.fenster_boden ? `${Number(a.fenster_normal || 0)} normale + ${Number(a.fenster_boden || 0)} bodentiefe Fenster` : "";
@@ -2422,20 +2420,31 @@ function anfragePopupPruefen() {
           ? `<button class="knopf knopf--voll knopf--gross" type="button" autofocus data-aktion="termin-bestaetigen" data-id="${esc(a.id)}">Bestätigen</button>
              <button class="knopf knopf--gross" type="button" data-aktion="termin-verschieben" data-id="${esc(a.id)}">Anderer Termin</button>
              <button class="knopf knopf--leise knopf--gefahr knopf--gross" type="button" data-aktion="termin-ablehnen" data-id="${esc(a.id)}">Ablehnen</button>`
-          : `<a class="knopf knopf--voll knopf--gross" autofocus href="#kunde/${esc(a.kunde_id)}" data-ap-gesehen="${esc(a.id)}">Kunde öffnen</a>`
+          : `<button class="knopf knopf--voll knopf--gross" type="button" autofocus data-aktion="anfrage-kontakt" data-id="${esc(a.id)}">Bin in Kontakt</button>
+             <a class="knopf knopf--gross" href="#kunde/${esc(a.kunde_id)}" data-ap-kunde="${esc(a.id)}">Kunde öffnen</a>`
       }
     </div>
-    <button class="ap-spaeter" type="button" data-ap-spaeter="${esc(a.id)}">Später – bleibt in der Übersicht stehen</button>`;
+    <button class="ap-spaeter" type="button" data-ap-spaeter="${esc(a.id)}">Später – kommt beim nächsten Öffnen wieder</button>`;
   anfragePopup.showModal();
 }
 
 anfragePopup.addEventListener("click", (e) => {
   const ziel = e.target;
-  const knopf = ziel.closest("[data-ap-spaeter], [data-ap-gesehen], [data-aktion]");
-  // Was man hier angetippt hat, gilt als gesehen; data-aktion läuft danach über die normale Bedienung
-  if (knopf) anfrageGesehen(knopf.dataset.apSpaeter || knopf.dataset.apGesehen || knopf.dataset.id);
+  const knopf = ziel.closest("[data-ap-spaeter], [data-ap-kunde], [data-aktion]");
+  if (knopf?.dataset.aktion) {
+    // Kurz Ruhe, bis die Aktion durch ist; wird sie abgebrochen, kommt das Popup wieder
+    const id = knopf.dataset.id;
+    inArbeit.add(id);
+    setTimeout(() => {
+      inArbeit.delete(id);
+      anfragePopupPruefen();
+    }, 6000);
+  } else if (knopf) spaeterListe.add(knopf.dataset.apSpaeter || knopf.dataset.apKunde);
+  else if (ziel === anfragePopup) spaeterListe.add(anfragePopup.dataset.id);
   if (ziel === anfragePopup || knopf) anfragePopup.close();
 });
+// Escape zählt wie „Später“
+anfragePopup.addEventListener("cancel", () => spaeterListe.add(anfragePopup.dataset.id));
 anfragePopup.addEventListener("close", () => setTimeout(anfragePopupPruefen, 400));
 
 /* ===================== Mails an Kunden ===================== */
@@ -2625,7 +2634,6 @@ document.addEventListener("click", async (event) => {
           return;
         }
       }
-      anfrageGesehen(id);
       mailOeffnen(k, "bestaetigt", a, "Bestätigt");
       return render();
     }
@@ -2655,8 +2663,16 @@ document.addEventListener("click", async (event) => {
           return;
         }
       }
-      anfrageGesehen(id);
       mailOeffnen(k, "abgelehnt", a, "Abgelehnt");
+      return render();
+    }
+    case "anfrage-kontakt": {
+      const a = finden("auftraege");
+      const k = kundeVon(a?.kunde_id);
+      if (k && k.status === "neu") {
+        await aendern("kunden", k.id, { status: "kontakt" });
+        await notiz(k.id, `Status → ${STATUS_NAME.kontakt}`);
+      }
       return render();
     }
     case "termin-verschieben": {
@@ -2666,9 +2682,12 @@ document.addEventListener("click", async (event) => {
         felder: `<label class="feld"><span>Neuer Wunschtermin</span><input type="datetime-local" name="datum" required value="${esc(isoZuLokal(a.datum))}" /></label>`,
         absenden: async (f) => {
           const neuIso = lokalZuIso(f.datum);
-          await aendern("auftraege", id, { datum: neuIso });
+          // Vorschlag = vorläufiger Termin („Geplant“), bis der Kunde zusagt → dann „Fix machen“
+          const vorschlag = { datum: neuIso, vorlaeufig: true, termin_status: null };
+          await aendern("auftraege", id, vorschlag);
           await notiz(a.kunde_id, `Termin vorgeschlagen: ${fmtTagLang.format(new Date(neuIso))} ${fmtUhr.format(new Date(neuIso))}`);
-          anfrageGesehen(id);
+          if (a.kunde_id) await statusNachTermin(a.kunde_id, { ...a, ...vorschlag });
+          await kalenderAbgleichen(id);
           mailOeffnen(kundeVon(a.kunde_id), "vorschlag", { ...a, datum: neuIso }, "Neuer Termin vorgeschlagen");
         },
       });

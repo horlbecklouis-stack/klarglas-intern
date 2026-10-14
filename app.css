@@ -3800,3 +3800,4 @@ a.kachel:active,
     .anfrage-popup[open] { transform: none; }
   }
 }
+.kanal-marke--ohne { --kfarbe: #9aa3b2; }
