@@ -7,7 +7,7 @@ const TABELLEN = ["kunden", "auftraege", "notizen", "ausgaben", "auszahlungen", 
 const STATUS = [
   { id: "neu", name: "Neue Anfrage", farbe: "#2B5CFF" },
   { id: "kontakt", name: "In Kontakt", farbe: "#5B3FD6" },
-  { id: "geplant", name: "Termin geplant", farbe: "#0891B2" },
+  { id: "geplant", name: "Termin geplant", farbe: "#E67C73" },
   { id: "termin", name: "Termin steht", farbe: "#D08A00" },
   { id: "erledigt", name: "Erledigt", farbe: "#0F7A4B" },
   { id: "stamm", name: "Stammkunde", farbe: "#010F2B" },
@@ -783,7 +783,7 @@ function ansichtUebersicht() {
       <div class="karte__kopf">${kartenTitel("t-stand", "himmel", "kunden", "Kunden nach Stand")}<a class="knopf knopf--klein knopf--leise" href="#kunden">Alle ${gesamt}</a></div>
       ${gesamt ? `<div class="stand" aria-hidden="true">${zaehlung.filter((s) => s.anzahl).map((s) => `<span style="flex:${s.anzahl};background:${s.farbe}"></span>`).join("")}</div>` : ""}
       <div class="chips">${zaehlung.map((s) => {
-        const hell = { neu: "rgba(43, 92, 255, 0.08)", kontakt: "#f0ebff", geplant: "#e0f4f8", termin: "#fff4e0", erledigt: "#e6f5ee", stamm: "#e8eaf0", abgesagt: "#f4f5f7" }[s.id];
+        const hell = { neu: "rgba(43, 92, 255, 0.08)", kontakt: "#f0ebff", geplant: "#fbe9e7", termin: "#fff4e0", erledigt: "#e6f5ee", stamm: "#e8eaf0", abgesagt: "#f4f5f7" }[s.id];
         return `<a class="chip chip--legende" href="#kunden?status=${s.id}" style="--chip-bg:${hell};--chip-farbe:${s.farbe}"><span class="chip__punkt"></span>${esc(s.name)}<span class="chip__zahl">${s.anzahl}</span></a>`;
       }).join("")}</div>
     </section>
