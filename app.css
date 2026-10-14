@@ -3523,3 +3523,280 @@ a.kachel:active,
 .segment--preisart input { position: absolute; opacity: 0; pointer-events: none; }
 .segment--preisart .segment__knopf:has(input:checked) { background: var(--navy); color: var(--cream); }
 .segment--preisart .segment__knopf:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* ===================== Runde 9 ===================== */
+
+:root {
+  --tuerkis: #0891b2;
+  --tuerkis-wash: #e0f4f8;
+  --tuerkis-text: #0e7490;
+  --nebenan: #1e9e5a;
+}
+
+/* Neue Stufe „Termin geplant“ und nebenan.de */
+.status--geplant { background: var(--tuerkis-wash); color: var(--tuerkis-text); }
+.badge--tuerkis { --tone: var(--tuerkis-text); --tone-wash: var(--tuerkis-wash); }
+.kanal-marke--nebenan { --kfarbe: var(--nebenan); }
+.tk-rund__kreis--nebenan { background: var(--nebenan); color: #fff; }
+
+/* Kleine Marke hinter dem Namen: Besichtigung, Rückruf, vorläufig */
+.art-marke {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--pill);
+  background: var(--navy-wash);
+  color: var(--navy);
+  font-size: 0.72em;
+  font-weight: 700;
+  vertical-align: 0.1em;
+  white-space: nowrap;
+}
+.art-marke--geplant { background: var(--tuerkis-wash); color: var(--tuerkis-text); }
+
+/* Termine ohne Geld: gestrichelte Datumsmarke, damit man sie sofort vom Auftrag unterscheidet */
+.zeile--termin .datum-marke {
+  outline: 1.5px dashed var(--line);
+  outline-offset: -1.5px;
+}
+
+/* Ebene 1 mit Akzent: Geplant, noch nicht fest */
+.karte--geplant {
+  box-shadow: inset 4px 0 0 var(--tuerkis), var(--schatten-karte);
+}
+.geplant-zeile {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+}
+.geplant-zeile + .geplant-zeile { border-top: 1px solid var(--line-karte); }
+.geplant-zeile__aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-left: 0.25rem;
+}
+.geplant-zeile__aktionen .knopf--voll { background: var(--tuerkis); border-color: var(--tuerkis); }
+@media (min-width: 700px) {
+  .geplant-zeile { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+}
+
+/* Schalter „Noch nicht bestätigt“ im Dialog */
+.schalter-zeile {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--white);
+  cursor: pointer;
+  transition: border-color var(--dur-hover) ease, background-color var(--dur-hover) ease;
+}
+.schalter-zeile input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0.1rem 0 0;
+  accent-color: var(--tuerkis);
+}
+.schalter-zeile span { display: grid; gap: 0.15rem; min-width: 0; }
+.schalter-zeile small { color: var(--ink-3); font-size: 0.8rem; line-height: 1.35; }
+.schalter-zeile:has(input:checked) { border-color: var(--tuerkis); background: var(--tuerkis-wash); }
+.schalter-zeile:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* Auswahl-Chips (Radio): Termin-Art, Quelle einer Nachricht */
+.chips--wahl { flex-wrap: wrap; overflow: visible; }
+.chip--wahl {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.chip--wahl input { position: absolute; opacity: 0; pointer-events: none; }
+.chip--wahl:has(input:checked) { background: var(--navy); border-color: var(--navy); color: var(--cream); }
+.chip--wahl:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* Verlauf: eingefügte Nachrichten mit Quelle, lange Texte zum Aufklappen */
+.verlauf li.verlauf--nachricht { border-left-color: var(--nebenan); }
+.verlauf li span { overflow-wrap: anywhere; white-space: pre-line; }
+.verlauf__quelle {
+  justify-self: start;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--pill);
+  background: var(--gruen-wash);
+  color: var(--gruen-text);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap !important;
+}
+.verlauf__lang summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  list-style: none;
+}
+.verlauf__lang summary::-webkit-details-marker { display: none; }
+.verlauf__lang summary::after {
+  content: " Ganz lesen";
+  color: var(--accent);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.verlauf__lang[open] summary { display: none; }
+.verlauf__lang p { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+
+/* Wie geht's weiter: kleiner, nur der nächste Schritt */
+.weiter-feld { padding: 0.85rem 1rem; gap: 0.35rem; }
+.weiter-feld > span { font-size: 0.875rem; }
+.weiter-feld small { font-weight: 500; }
+.weiter-feld textarea { min-height: 0; resize: vertical; }
+
+/* Terminkarte: Notizen und Hinweis „vorläufig“ */
+.tk-notiz {
+  margin: 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--r-field);
+  background: var(--bernstein-wash);
+}
+.tk-notiz h3 { margin: 0 0 0.25rem; }
+.tk-notiz p { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.tk-vorlaeufig {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  margin: 1rem 1rem 0;
+  padding: 0.85rem 1rem;
+  border-radius: var(--r-field);
+  background: var(--tuerkis-wash);
+  color: var(--tuerkis-text);
+}
+.tk-vorlaeufig p { margin: 0; flex: 1 1 14rem; }
+.tk-vorlaeufig .knopf--voll { background: var(--tuerkis); border-color: var(--tuerkis); }
+
+/* ---------- Neue Anfrage: großes Popup (Handy: Sheet von unten) ---------- */
+
+.anfrage-popup {
+  width: min(480px, calc(100% - 24px));
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-karte);
+  background: var(--cream);
+  color: var(--navy);
+  box-shadow: 0 30px 80px -30px rgba(1, 15, 43, 0.6);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.anfrage-popup::backdrop {
+  background: rgba(1, 15, 43, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.anfrage-popup__griff { display: none; }
+.anfrage-popup__inhalt { display: grid; }
+
+.ap-oben {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 1.25rem 1.25rem 0;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.ap-oben .kanal-marke { margin: 0; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85); }
+.ap-name,
+.ap-wann { margin: 0; padding: 0 1.25rem; color: #fff; }
+.ap-name { padding-top: 0.35rem; font-size: 1.6rem; line-height: 1.15; overflow-wrap: anywhere; }
+.ap-wann { padding-top: 0.25rem; padding-bottom: 1.25rem; font-size: 1.05rem; font-weight: 600; color: rgba(255, 255, 255, 0.92); }
+/* Blauer Kopf wie die Karte „Terminanfragen“ */
+.anfrage-popup__inhalt::before {
+  content: "";
+  grid-area: 1 / 1 / 4 / 2;
+  background: linear-gradient(160deg, #3d6bff 0%, var(--blau) 60%, #2650f2 100%);
+}
+.ap-oben { grid-area: 1 / 1; z-index: 1; }
+.ap-name { grid-area: 2 / 1; z-index: 1; }
+.ap-wann { grid-area: 3 / 1; z-index: 1; }
+
+.ap-infos { display: grid; gap: 0.6rem; margin: 0; padding: 1rem 1.25rem 0.25rem; }
+.ap-info { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.75rem; }
+.ap-info dt { color: var(--ink-3); font-size: 0.85rem; font-weight: 600; }
+.ap-info dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.ap-info a { color: var(--accent); font-weight: 600; }
+
+.ap-knoepfe { display: grid; gap: 0.5rem; padding: 1rem 1.25rem 0.25rem; }
+.ap-knoepfe .knopf { width: 100%; justify-content: center; text-align: center; }
+.ap-spaeter {
+  margin: 0.25rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  padding: 0.75rem;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ap-spaeter:hover { color: var(--navy); }
+}
+@media (min-width: 560px) {
+  .ap-knoepfe { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ap-knoepfe .knopf:only-child { grid-column: 1 / -1; }
+}
+
+.anfrage-popup[open] {
+  transition:
+    opacity var(--dur-ui) var(--ease-out),
+    transform var(--dur-ui) var(--ease-out),
+    overlay var(--dur-ui) allow-discrete,
+    display var(--dur-ui) allow-discrete;
+}
+@starting-style {
+  .anfrage-popup[open] { opacity: 0; transform: scale(0.96); }
+  .anfrage-popup[open]::backdrop { background-color: rgba(1, 15, 43, 0); }
+}
+
+@media (max-width: 699px) {
+  .anfrage-popup {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92dvh;
+    margin: auto 0 0;
+    border-radius: var(--r-karte) var(--r-karte) 0 0;
+  }
+  .anfrage-popup__griff {
+    display: block;
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    z-index: 3;
+    width: 40px;
+    height: 5px;
+    margin-left: -20px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.55);
+  }
+  .ap-oben { padding-top: 1.6rem; }
+  .anfrage-popup[open] {
+    transition:
+      transform var(--dur-sheet) var(--ease-sheet),
+      opacity var(--dur-ui) var(--ease-out),
+      overlay var(--dur-sheet) allow-discrete,
+      display var(--dur-sheet) allow-discrete;
+  }
+  @starting-style {
+    .anfrage-popup[open] { opacity: 1; transform: translateY(100%); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  @starting-style {
+    .anfrage-popup[open] { transform: none; }
+  }
+}

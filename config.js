@@ -6,6 +6,8 @@ window.KLARGLAS = {
   SUPABASE_ANON_KEY: "sb_publishable_rSlCwQ_qWRGCEGLMfKkwzA_RrOjl5xG",
   // Google Kalender → Einstellungen → „Klar Glas“ → Kalender integrieren → Kalender-ID
   KALENDER_ID: "81b750ad3109807631e2d6bc3b2993a4a02717fff01e60da42f97cb9df63c721@group.calendar.google.com",
+  // Push-Benachrichtigungen: öffentlicher Teil des Schlüssels (der private liegt nur als Secret in Supabase)
+  VAPID_PUBLIC: "BJlQjdDdqtuCBPcLhNofa7YAOFCgwXznLbt0-Ychrb6IpkvHh78i0F0j2zOj4eMpL02H5HnzZ9kt9WELRGLTO6o",
   // Wer rein darf – als SHA-256 der E-Mail-Adresse, damit die Adressen nicht öffentlich im Code stehen.
   // Neue Person: Hash z. B. mit „echo -n adresse | shasum -a 256“ erzeugen.
   TEAM: {

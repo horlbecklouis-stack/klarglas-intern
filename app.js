@@ -7,6 +7,7 @@ const TABELLEN = ["kunden", "auftraege", "notizen", "ausgaben", "auszahlungen", 
 const STATUS = [
   { id: "neu", name: "Neue Anfrage", farbe: "#2B5CFF" },
   { id: "kontakt", name: "In Kontakt", farbe: "#5B3FD6" },
+  { id: "geplant", name: "Termin geplant", farbe: "#0891B2" },
   { id: "termin", name: "Termin steht", farbe: "#D08A00" },
   { id: "erledigt", name: "Erledigt", farbe: "#0F7A4B" },
   { id: "stamm", name: "Stammkunde", farbe: "#010F2B" },
@@ -14,6 +15,10 @@ const STATUS = [
 ];
 const STATUS_NAME = Object.fromEntries(STATUS.map((s) => [s.id, s.name]));
 const LEISTUNGEN = ["Fensterreinigung", "Felgenreinigung", "Nachbarschaftshilfe"];
+// Termine ohne Geld, z. B. eine Besichtigung
+const TERMIN_ARTEN = ["Besichtigung", "Rückruf", "Sonstiges"];
+// Woher eine Nachricht im Verlauf kam
+const NACHRICHT_QUELLEN = { notiz: "Notiz", email: "Mail vom Kunden", nebenan: "nebenan.de", whatsapp: "WhatsApp", telefon: "Telefonat" };
 const KATEGORIEN = ["Putzmittel", "Werkzeug", "Fahrt", "Werbung", "Sonstiges"];
 const PERSONEN = ["Louis", "Lukas"];
 // Preise stehen in den Einstellungen (Dashboard → Einstellungen); das hier ist nur der Rückfall
@@ -230,6 +235,11 @@ function notiz(kundeId, text, automatisch = true) {
 const kundeVon = (id) => daten.kunden.find((k) => k.id === id);
 const auftraegeVon = (id) => daten.auftraege.filter((a) => a.kunde_id === id);
 const auftragDatum = (a) => new Date(a.datum || a.erstellt);
+const istTermin = (a) => a.art === "termin";
+// Überschrift eines Eintrags: bei Terminen die Art (z. B. Besichtigung), sonst die Leistung
+const auftragTitel = (a) => (istTermin(a) ? a.titel || "Termin" : a.leistung);
+// Name in Listen: Kunde, sonst bei Terminen ohne Kunde der Titel
+const auftragName = (a) => kundeVon(a.kunde_id)?.name || (istTermin(a) ? auftragTitel(a) : "Unbekannt");
 
 // Aktuelle Preise aus den Einstellungen, fehlende Werte mit dem Standard aufgefüllt
 function preise() {
@@ -380,13 +390,19 @@ function aufteilung() {
 
 const nochEintragen = () =>
   daten.auftraege
-    .filter((a) => !a.abgesagt && zahl(a.bekommen) === null && a.datum && new Date(a.datum) < new Date())
+    .filter((a) => !istTermin(a) && !a.vorlaeufig && !a.abgesagt && zahl(a.bekommen) === null && a.datum && new Date(a.datum) < new Date())
     .sort((a, b) => new Date(a.datum) - new Date(b.datum));
 
 const kommendeTermine = () =>
   daten.auftraege
-    .filter((a) => !a.abgesagt && a.datum && new Date(a.datum) >= new Date())
+    .filter((a) => !a.abgesagt && !a.vorlaeufig && a.datum && new Date(a.datum) >= new Date())
     .sort((a, b) => new Date(a.datum) - new Date(b.datum));
+
+// Vorläufig ausgemacht, aber noch nicht fest: auch wenn der Tag schon vorbei ist, bleibt er hier stehen
+const geplanteTermine = () =>
+  daten.auftraege
+    .filter((a) => a.vorlaeufig && !a.abgesagt && zahl(a.bekommen) === null)
+    .sort((a, b) => new Date(a.datum || a.erstellt) - new Date(b.datum || b.erstellt));
 
 const anfragenTermine = () =>
   daten.auftraege
@@ -417,16 +433,18 @@ const ICONS = {
   bewegung: '<path d="M7 7h11l-3-3M17 17H6l3 3"/>',
   sperre: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 8 8 5 8-5"/>',
+  haus: '<path d="M4 11.5 12 4.5l8 7"/><path d="M6 10v9.5h12V10"/><path d="M10 19.5v-5h4v5"/>',
   web: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.5 3.5 5.3 3.5 8.5s-1.1 6-3.5 8.5c-2.4-2.5-3.5-5.3-3.5-8.5s1.1-6 3.5-8.5Z"/>',
 };
 const badge = (farbe, icon) => `<span class="badge badge--${farbe}" aria-hidden="true"><svg viewBox="0 0 24 24">${ICONS[icon]}</svg></span>`;
 const kartenTitel = (id, farbe, icon, titel) => `<h2 class="karte__titel" id="${id}">${badge(farbe, icon)}<span>${titel}</span></h2>`;
 
-// Kontaktweg: Telefon, E-Mail oder Website
+// Kontaktweg: Telefon, E-Mail, Website oder nebenan.de
 const KANAELE = {
   telefon: { name: "Telefon", farbe: "#2B5CFF", icon: "kontakt" },
   email: { name: "E-Mail", farbe: "#5B3FD6", icon: "mail" },
   website: { name: "Website", farbe: "#D08A00", icon: "web" },
+  nebenan: { name: "nebenan.de", farbe: "#1E9E5A", icon: "haus" },
 };
 const kanalName = (kanal) => KANAELE[kanal]?.name || "";
 const kanalMarke = (kanal) => {
@@ -435,7 +453,7 @@ const kanalMarke = (kanal) => {
   return `<span class="kanal-marke kanal-marke--${kanal}" role="img" title="${k.name}" aria-label="Kontakt über ${k.name}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k.icon]}</svg></span>`;
 };
 
-// Drei große Knöpfe für den Kontaktweg (Pflicht)
+// Große Knöpfe für den Kontaktweg (Pflicht)
 function kanalWahl(gewaehlt) {
   return `<fieldset class="kanal-wahl">
     <legend>Kontakt über</legend>
@@ -474,14 +492,33 @@ function datumMarke(iso) {
 function terminZeile(a) {
   const k = kundeVon(a.kunde_id);
   const d = new Date(a.datum);
-  return `<li><button class="zeile zeile--knopf" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}">
+  return `<li><button class="zeile zeile--knopf${istTermin(a) ? " zeile--termin" : ""}" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}">
     ${datumMarke(a.datum)}
     <span class="zeile__haupt">
-      <span class="zeile__titel">${kanalMarke(a.kanal)}${esc(k?.name || "Unbekannt")}</span>
-      <span class="zeile__unter">${esc(fmtTag.format(d))}, ${esc(fmtUhr.format(d))} Uhr · ${esc(a.leistung)}${k?.adresse ? ` · ${esc(k.adresse)}` : ""}</span>
+      <span class="zeile__titel">${kanalMarke(a.kanal)}${esc(auftragName(a))}${istTermin(a) ? ` <span class="art-marke">${esc(auftragTitel(a))}</span>` : ""}</span>
+      <span class="zeile__unter">${esc(fmtTag.format(d))}, ${esc(fmtUhr.format(d))} Uhr${istTermin(a) ? "" : ` · ${esc(a.leistung)}`}${k?.adresse ? ` · ${esc(k.adresse)}` : ""}</span>
     </span>
     ${zahl(a.geschaetzt) !== null ? `<span class="zeile__rechts leise">~${euro(a.geschaetzt)}</span>` : ""}
   </button></li>`;
+}
+
+// Vorläufiger Termin: festmachen oder anpassen
+function geplantZeile(a) {
+  const d = a.datum ? new Date(a.datum) : null;
+  const vorbei = d && d < new Date();
+  return `<li class="geplant-zeile">
+    <button class="zeile zeile--knopf" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}">
+      ${d ? datumMarke(a.datum) : ""}
+      <span class="zeile__haupt">
+        <span class="zeile__titel">${kanalMarke(a.kanal)}${esc(auftragName(a))}${istTermin(a) ? ` <span class="art-marke">${esc(auftragTitel(a))}</span>` : ""}</span>
+        <span class="zeile__unter">${d ? `wahrscheinlich ${esc(fmtTag.format(d))}, ${esc(fmtUhr.format(d))} Uhr` : "noch ohne Tag"}${istTermin(a) ? "" : ` · ${esc(a.leistung)}`}${vorbei ? ' · <span class="minus">Tag ist vorbei</span>' : ""}</span>
+      </span>
+    </button>
+    <div class="geplant-zeile__aktionen">
+      <button class="knopf knopf--klein knopf--voll" type="button" data-aktion="termin-fix" data-id="${esc(a.id)}">Fix machen</button>
+      <button class="knopf knopf--klein knopf--leise" type="button" data-aktion="auftrag-bearbeiten" data-id="${esc(a.id)}">Ändern</button>
+    </div>
+  </li>`;
 }
 
 function eintragenZeile(a) {
@@ -656,6 +693,7 @@ function ansichtUebersicht() {
   const v = zahlenFuer(monat.vorVon, monat.vorBis);
   const offen = nochEintragen();
   const anfragen = anfragenTermine();
+  const geplant = geplanteTermine();
   const handy = istHandy();
   const termine = kommendeTermine().slice(0, handy ? 5 : 4);
   const aufgaben = daten.aufgaben.filter((a) => !a.erledigt).sort(nachFaelligkeit).slice(0, 5);
@@ -671,12 +709,14 @@ function ansichtUebersicht() {
       </div>
       <div class="knopfreihe" ${handy ? "hidden" : ""}>
         <button class="knopf" type="button" data-aktion="kunde-neu">Kunde anlegen</button>
+        <button class="knopf" type="button" data-aktion="termin-neu">Termin anlegen</button>
         <button class="knopf knopf--voll" type="button" data-aktion="auftrag-neu">Auftrag anlegen</button>
       </div>
     </div>
 
     ${handy ? `<div class="knopfreihe knopfreihe--gross">
       <button class="knopf knopf--gross" type="button" data-aktion="kunde-neu">+ Kunde</button>
+      <button class="knopf knopf--gross" type="button" data-aktion="termin-neu">+ Termin</button>
       <button class="knopf knopf--voll knopf--gross" type="button" data-aktion="auftrag-neu">+ Auftrag</button>
     </div>` : ""}
 
@@ -711,6 +751,11 @@ function ansichtUebersicht() {
       }).join("")}</ul>
     </section>` : ""}
 
+    ${geplant.length ? `<section class="karte karte--geplant" aria-labelledby="t-geplant">
+      <div class="karte__kopf">${kartenTitel("t-geplant", "tuerkis", "uhr", "Geplant, noch nicht fest")}<span class="leise">${geplant.length} vorläufig</span></div>
+      <ul class="liste">${geplant.map(geplantZeile).join("")}</ul>
+    </section>` : ""}
+
     ${offen.length ? `<section class="karte karte--bernstein" aria-labelledby="t-eintragen">
       <div class="karte__kopf">${kartenTitel("t-eintragen", "bernstein", "stift", "Noch eintragen")}<span class="leise">${offen.length} Termin${offen.length === 1 ? "" : "e"}</span></div>
       <p class="hinweis">Wie viel habt ihr wirklich bekommen? Trinkgeld einfach mitzählen.</p>
@@ -719,7 +764,7 @@ function ansichtUebersicht() {
 
     <div class="raster raster--zwei">
       <section class="karte" aria-labelledby="t-termine">
-        <div class="karte__kopf">${kartenTitel("t-termine", "blau", "termin", "Nächste Termine")}<a class="knopf knopf--klein knopf--leise" href="#kalender">Kalender</a></div>
+        <div class="karte__kopf">${kartenTitel("t-termine", "blau", "termin", "Nächste Termine")}<div class="knopfreihe"><button class="knopf knopf--klein" type="button" data-aktion="termin-neu">+ Termin</button><a class="knopf knopf--klein knopf--leise" href="#kalender">Kalender</a></div></div>
         ${termine.length ? `<ul class="liste">${termine.map(terminZeile).join("")}</ul>` : `<p class="leer">Gerade keine Termine. Zeit für Werbung im Märchenviertel.</p>`}
       </section>
 
@@ -738,7 +783,7 @@ function ansichtUebersicht() {
       <div class="karte__kopf">${kartenTitel("t-stand", "himmel", "kunden", "Kunden nach Stand")}<a class="knopf knopf--klein knopf--leise" href="#kunden">Alle ${gesamt}</a></div>
       ${gesamt ? `<div class="stand" aria-hidden="true">${zaehlung.filter((s) => s.anzahl).map((s) => `<span style="flex:${s.anzahl};background:${s.farbe}"></span>`).join("")}</div>` : ""}
       <div class="chips">${zaehlung.map((s) => {
-        const hell = { neu: "rgba(43, 92, 255, 0.08)", kontakt: "#f0ebff", termin: "#fff4e0", erledigt: "#e6f5ee", stamm: "#e8eaf0", abgesagt: "#f4f5f7" }[s.id];
+        const hell = { neu: "rgba(43, 92, 255, 0.08)", kontakt: "#f0ebff", geplant: "#e0f4f8", termin: "#fff4e0", erledigt: "#e6f5ee", stamm: "#e8eaf0", abgesagt: "#f4f5f7" }[s.id];
         return `<a class="chip chip--legende" href="#kunden?status=${s.id}" style="--chip-bg:${hell};--chip-farbe:${s.farbe}"><span class="chip__punkt"></span>${esc(s.name)}<span class="chip__zahl">${s.anzahl}</span></a>`;
       }).join("")}</div>
     </section>
@@ -882,6 +927,24 @@ function ansichtKunden() {
     </div>`;
 }
 
+// nebenan.de: Link aus der App oder nur der Profilpfad – beides wird zu einer vollständigen Adresse
+const nebenanUrl = (link) => (/^https?:\/\//i.test(link) ? link : `https://nebenan.de/${String(link).replace(/^\/+/, "")}`);
+
+// Ein Eintrag im Verlauf; lange Nachrichten (z. B. reinkopierte Mails) sind eingeklappt
+function verlaufEintrag(n) {
+  const quelle = n.quelle && n.quelle !== "notiz" ? NACHRICHT_QUELLEN[n.quelle] : "";
+  const text = String(n.text || "");
+  const lang = text.length > 280 || text.split("\n").length > 5;
+  const inhaltText = lang
+    ? `<details class="verlauf__lang"><summary>${esc(text.slice(0, 160).replace(/\s+/g, " "))} …</summary><p>${esc(text)}</p></details>`
+    : `<span>${esc(text)}</span>`;
+  return `<li class="${n.automatisch ? "auto" : ""}${quelle ? " verlauf--nachricht" : ""}">
+    ${quelle ? `<span class="verlauf__quelle">${esc(quelle)}</span>` : ""}
+    ${inhaltText}
+    <small>${esc(fmtDatum.format(new Date(n.erstellt)))}, ${esc(fmtUhr.format(new Date(n.erstellt)))} · ${esc(n.autor || "")}</small>
+  </li>`;
+}
+
 function ansichtKunde(id) {
   const k = kundeVon(id);
   if (!k) return `<a class="zurueck" href="#kunden">← Kunden</a><p class="leer">Diesen Kunden gibt es nicht (mehr).</p>`;
@@ -912,9 +975,9 @@ function ansichtKunde(id) {
       </div>
     </div>
 
-    <label class="karte feld">
-      <span>Wie geht's weiter?</span>
-      <textarea data-weiter="${esc(k.id)}" placeholder="Zum Beispiel: In 3 Monaten wieder anrufen, will auch die Felgen machen lassen">${esc(k.weiter || "")}</textarea>
+    <label class="karte feld weiter-feld">
+      <span>Wie geht's weiter? <small class="leise">nur der nächste Schritt, Nachrichten gehören in den Verlauf</small></span>
+      <textarea rows="2" data-weiter="${esc(k.id)}" placeholder="Zum Beispiel: Samstag zurückrufen, will auch die Felgen machen lassen">${esc(k.weiter || "")}</textarea>
     </label>
 
     <div class="raster raster--zwei">
@@ -924,7 +987,8 @@ function ansichtKunde(id) {
           ${k.telefon ? `<a href="tel:${esc(tel)}"><svg viewBox="0 0 24 24"><path d="M6.5 3h3l1.5 4-2 1.5a12 12 0 0 0 6.5 6.5L17 13l4 1.5v3a2.5 2.5 0 0 1-2.7 2.5C10.9 19.5 4.5 13.1 4 5.7A2.5 2.5 0 0 1 6.5 3Z"/></svg>${esc(k.telefon)}</a>` : ""}
           ${k.email ? `<a href="mailto:${esc(k.email)}"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 8 8 5 8-5"/></svg>${esc(k.email)}</a>` : ""}
           ${k.adresse ? `<a href="https://maps.apple.com/?q=${encodeURIComponent(`${k.adresse}, Berlin`)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg>${esc(k.adresse)}</a>` : ""}
-          ${!k.telefon && !k.email && !k.adresse ? `<p class="leise">Noch keine Kontaktdaten.</p>` : ""}
+          ${k.nebenan_link ? `<a href="${esc(nebenanUrl(k.nebenan_link))}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24">${ICONS.haus}</svg>Auf nebenan.de schreiben</a>` : ""}
+          ${!k.telefon && !k.email && !k.adresse && !k.nebenan_link ? `<p class="leise">Noch keine Kontaktdaten.</p>` : ""}
         </div>
         ${kam ? `<p class="kam-ueber">Kam über: <b>${esc(kanalName(kam))}</b></p>` : ""}
       </section>
@@ -951,27 +1015,28 @@ function ansichtKunde(id) {
     </section>` : ""}
 
     <section class="karte" aria-labelledby="t-auftraege">
-      <div class="karte__kopf">${kartenTitel("t-auftraege", "blau", "termin", "Aufträge")}<button class="knopf knopf--klein knopf--voll" type="button" data-aktion="auftrag-neu" data-kunde="${esc(k.id)}">Neuer Auftrag</button></div>
+      <div class="karte__kopf">${kartenTitel("t-auftraege", "blau", "termin", "Aufträge und Termine")}<div class="knopfreihe"><button class="knopf knopf--klein" type="button" data-aktion="termin-neu" data-kunde="${esc(k.id)}">+ Termin</button><button class="knopf knopf--klein knopf--voll" type="button" data-aktion="auftrag-neu" data-kunde="${esc(k.id)}">+ Auftrag</button></div></div>
       ${auftraege.length ? `<ul class="liste">${auftraege.map((a) => `<li><button class="zeile" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}" style="width:100%;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left;cursor:pointer">
         ${a.datum ? datumMarke(a.datum) : ""}
         <span class="zeile__haupt">
-          <span class="zeile__titel">${kanalMarke(a.kanal)}${esc(a.leistung)}${a.abgesagt ? " · abgesagt" : ""}${a.termin_status ? ` · <small style="background:var(--accent-wash);color:var(--accent);padding:0.15rem 0.4rem;border-radius:var(--r-field);font-weight:600;font-size:0.85em">${a.termin_status === "angefragt" ? "angefragt" : a.termin_status === "bestaetigt" ? "bestätigt" : ""}</small>` : ""}</span>
+          <span class="zeile__titel">${kanalMarke(a.kanal)}${esc(auftragTitel(a))}${a.vorlaeufig ? ' <span class="art-marke art-marke--geplant">vorläufig</span>' : ""}${a.abgesagt ? " · abgesagt" : ""}${a.termin_status ? ` · <small style="background:var(--accent-wash);color:var(--accent);padding:0.15rem 0.4rem;border-radius:var(--r-field);font-weight:600;font-size:0.85em">${a.termin_status === "angefragt" ? "angefragt" : a.termin_status === "bestaetigt" ? "bestätigt" : ""}</small>` : ""}</span>
           <span class="zeile__unter">${a.datum ? `${esc(fmtTag.format(new Date(a.datum)))}, ${esc(fmtUhr.format(new Date(a.datum)))} Uhr` : "ohne Termin"}${zahl(a.geschaetzt) !== null ? ` · geschätzt ${euro(a.geschaetzt)}` : ""}</span>
         </span>
-        <span class="zeile__rechts">${zahl(a.bekommen) !== null ? `${euro(a.bekommen)}${(() => { const tg = trinkgeld(a); const pct = zahl(a.geschaetzt) !== null && Number(a.geschaetzt) > 0 ? Math.round((tg / Number(a.geschaetzt)) * 100) : 0; return tg ? `<br><small class="plus">+${euro(tg)}${pct > 0 ? ` (${pct} %)` : ""}</small>` : ""; })()}` : `<span class="leise">offen</span>`}</span>
+        <span class="zeile__rechts">${istTermin(a) ? "" : zahl(a.bekommen) !== null ? `${euro(a.bekommen)}${(() => { const tg = trinkgeld(a); const pct = zahl(a.geschaetzt) !== null && Number(a.geschaetzt) > 0 ? Math.round((tg / Number(a.geschaetzt)) * 100) : 0; return tg ? `<br><small class="plus">+${euro(tg)}${pct > 0 ? ` (${pct} %)` : ""}</small>` : ""; })()}` : `<span class="leise">offen</span>`}</span>
       </button></li>`).join("")}</ul>` : `<p class="leer">Noch kein Auftrag.</p>`}
     </section>
 
     <section class="karte" aria-labelledby="t-verlauf">
       ${kartenTitel("t-verlauf", "violett", "stift", "Verlauf")}
       <form class="formular" data-notiz-form="${esc(k.id)}">
-        <label class="feld"><span>Neue Notiz</span><textarea name="text" required placeholder="Zum Beispiel: Angerufen, will Samstag vormittags"></textarea></label>
-        <div><button class="knopf knopf--voll knopf--klein" type="submit">Notiz speichern</button></div>
+        <fieldset class="feld">
+          <legend>Was trägst du ein?</legend>
+          <div class="chips chips--wahl">${Object.entries(NACHRICHT_QUELLEN).map(([id, name]) => `<label class="chip chip--wahl"><input type="radio" name="quelle" value="${id}"${id === "notiz" ? " checked" : ""} />${esc(name)}</label>`).join("")}</div>
+        </fieldset>
+        <label class="feld"><span>Text</span><textarea name="text" required placeholder="Eigene Notiz oder die Nachricht vom Kunden einfach reinkopieren"></textarea></label>
+        <div><button class="knopf knopf--voll knopf--klein" type="submit">Speichern</button></div>
       </form>
-      ${notizen.length ? `<ul class="verlauf">${notizen.map((n) => `<li class="${n.automatisch ? "auto" : ""}">
-        <span>${esc(n.text)}</span>
-        <small>${esc(fmtDatum.format(new Date(n.erstellt)))}, ${esc(fmtUhr.format(new Date(n.erstellt)))} · ${esc(n.autor || "")}</small>
-      </li>`).join("")}</ul>` : ""}
+      ${notizen.length ? `<ul class="verlauf">${notizen.map(verlaufEintrag).join("")}</ul>` : ""}
     </section>`;
 }
 
@@ -986,8 +1051,8 @@ function terminListeHandy(termine) {
         <button class="zeile zeile--knopf" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}">
           ${datumMarke(a.datum)}
           <span class="zeile__haupt">
-            <span class="zeile__titel">${kanalMarke(a.kanal)}${esc(k?.name || "Unbekannt")}</span>
-            <span class="zeile__unter">${esc(fmtTag.format(d))}, ${esc(fmtUhr.format(d))} Uhr · ${esc(a.leistung)}</span>
+            <span class="zeile__titel">${kanalMarke(a.kanal)}${esc(auftragName(a))}${istTermin(a) ? ` <span class="art-marke">${esc(auftragTitel(a))}</span>` : ""}</span>
+            <span class="zeile__unter">${esc(fmtTag.format(d))}, ${esc(fmtUhr.format(d))} Uhr${istTermin(a) ? "" : ` · ${esc(a.leistung)}`}</span>
           </span>
         </button>
         ${k?.adresse ? `<a class="kal-adresse" href="https://maps.apple.com/?q=${encodeURIComponent(`${k.adresse}, Berlin`)}" target="_blank" rel="noopener">${esc(k.adresse)} ↗</a>` : ""}
@@ -1309,6 +1374,10 @@ function ansichtEinstellungen() {
         ${feld("stundensatz", "Stundenlohn", "0.5", "Vorschlag für neue Aufträge. Im Auftrag selbst kannst du ihn ändern oder auf Festpreis umstellen.")}
       </section>
     </div>
+    <section class="karte">
+      <div class="karte__kopf">${kartenTitel("t-push", "violett", "anfrage", "Mitteilungen bei neuen Anfragen")}<button class="knopf knopf--klein${pushAn ? " knopf--leise" : " knopf--voll"}" type="button" data-aktion="push-umschalten">${pushAn ? "Ausschalten" : "Einschalten"}</button></div>
+      <p class="leise" style="margin:0">${esc(pushText())} Gilt nur für dieses Gerät – am Handy und am Mac je einmal einschalten.</p>
+    </section>
     <p class="hinweis">Die Preise, die auf der Website stehen, ändern sich dadurch nicht automatisch – die Texte dort müssen separat angepasst werden. Termine, Dauer und Kalender stellst du unter <a href="#zeiten">Wann wir können</a> ein.</p>`;
 }
 
@@ -1549,6 +1618,7 @@ function render() {
     oeffneDiagramm(zeige);
   }
   wartetAufRender = false;
+  anfragePopupPruefen();
 }
 
 // Änderungen vom anderen Gerät: nicht neu zeichnen, während jemand gerade tippt
@@ -1670,10 +1740,11 @@ function dialogKunde(k = {}) {
       <label class="feld"><span>Straße und Hausnummer</span><input name="adresse" value="${esc(k.adresse)}" /></label>
       <label class="feld"><span>Status</span><select name="status">${optionen(STATUS.map((s) => [s.id, s.name]), k.status || "kontakt")}</select></label>
       ${kanalWahl(kanalAusKunde(k))}
-      <label class="feld"><span>Wie geht's weiter?</span><textarea name="weiter">${esc(k.weiter)}</textarea></label>`,
+      <label class="feld"><span>nebenan.de-Profil (optional)</span><input name="nebenan_link" type="text" inputmode="url" autocomplete="off" spellcheck="false" value="${esc(k.nebenan_link)}" placeholder="Link aus nebenan.de reinkopieren" /></label>
+      <label class="feld"><span>Wie geht's weiter?</span><textarea name="weiter" rows="2">${esc(k.weiter)}</textarea></label>`,
     absenden: async (f) => {
       if (!k.id && !f.kanal) throw new Error("Bitte wähle, wie der Kunde auf uns zukam.");
-      const zeile = { name: f.name.trim(), telefon: f.telefon.trim() || null, email: f.email.trim() || null, adresse: f.adresse.trim() || null, status: f.status, weiter: f.weiter.trim() || null, quelle: f.kanal || k.quelle || null };
+      const zeile = { name: f.name.trim(), telefon: f.telefon.trim() || null, email: f.email.trim() || null, adresse: f.adresse.trim() || null, status: f.status, weiter: f.weiter.trim() || null, quelle: f.kanal || k.quelle || null, nebenan_link: f.nebenan_link.trim() || null };
       if (k.id) {
         if (k.status !== f.status) await notiz(k.id, `Status → ${STATUS_NAME[f.status]}`);
         await aendern("kunden", k.id, zeile);
@@ -1732,7 +1803,9 @@ function dialogAuftrag(a = {}, kundeId = null) {
         <label class="feld"><span>Wirklich bekommen (€)</span><input name="bekommen" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(a.bekommen ?? "")}" placeholder="nach dem Termin" /></label>
       </div>
       <p class="hinweis" data-schaetz-hinweis></p>
+      ${vorlaeufigSchalter(a)}
       ${kanalWahl(kanalVorbelegt)}
+      <label class="feld"><span>Notizen zum Auftrag</span><textarea name="notiz" rows="3" placeholder="Zum Beispiel: Hund im Garten, Leiter mitbringen, Schlüssel beim Nachbarn">${esc(a.notiz)}</textarea></label>
       ${a.id ? `<label class="feld" style="grid-template-columns:auto 1fr;align-items:center;gap:.6rem"><input type="checkbox" name="abgesagt" ${a.abgesagt ? "checked" : ""} style="width:22px;min-height:22px" /><span>Abgesagt</span></label>` : ""}`,
     nachOeffnen: (form) => {
       let vonHand = a.id && zahl(a.geschaetzt) !== null && zahl(a.geschaetzt) !== schaetzen(a);
@@ -1772,21 +1845,115 @@ function dialogAuftrag(a = {}, kundeId = null) {
         bekommen: zahl(f.bekommen),
         abgesagt: Boolean(f.abgesagt),
         kanal: f.kanal,
+        vorlaeufig: Boolean(f.vorlaeufig) && Boolean(f.datum),
+        notiz: (f.notiz || "").trim() || null,
       };
+      let gespeichert;
       if (a.id) {
-        await aendern("auftraege", a.id, zeile);
+        gespeichert = await aendern("auftraege", a.id, zeile);
         if (zahl(a.bekommen) === null && zeile.bekommen !== null) await nachBezahlung(zeile.kunde_id, zeile);
+        else if (zeile.datum && (zeile.datum !== a.datum || zeile.vorlaeufig !== Boolean(a.vorlaeufig))) await statusNachTermin(zeile.kunde_id, zeile);
       } else {
-        await neu("auftraege", zeile);
-        const k = kundeVon(zeile.kunde_id);
+        gespeichert = await neu("auftraege", zeile);
         if (zeile.bekommen !== null) await nachBezahlung(zeile.kunde_id, zeile);
-        else if (zeile.datum && k && ["neu", "kontakt", "erledigt"].includes(k.status)) {
-          await aendern("kunden", k.id, { status: "termin" });
-          await notiz(k.id, `Termin am ${fmtTag.format(new Date(zeile.datum))} eingetragen · Status → Termin steht`);
-        }
+        else await statusNachTermin(zeile.kunde_id, zeile);
       }
+      kalenderAbgleichen(gespeichert?.id || a.id);
     },
-    entfernen: a.id ? () => loeschen("auftraege", a.id) : null,
+    entfernen: a.id ? () => auftragLoeschen(a) : null,
+  });
+}
+
+// Schalter „Noch nicht bestätigt“: ungefähr ausgemacht, steht aber noch nicht fest
+function vorlaeufigSchalter(a) {
+  return `<label class="schalter-zeile">
+    <input type="checkbox" name="vorlaeufig" ${a.vorlaeufig ? "checked" : ""} />
+    <span><b>Noch nicht bestätigt</b><small>Ungefähr ausgemacht, z. B. „wahrscheinlich Samstag 16 Uhr“. Steht als „Termin geplant“ und mit ? im Kalender.</small></span>
+  </label>`;
+}
+
+// Kunde rückt mit einem Termin weiter: vorläufig → „Termin geplant“, fest → „Termin steht“
+async function statusNachTermin(kundeId, zeile) {
+  const k = kundeVon(kundeId);
+  if (!k || !zeile.datum || zeile.abgesagt) return;
+  const ziel = zeile.vorlaeufig ? "geplant" : "termin";
+  const darf = zeile.vorlaeufig ? ["neu", "kontakt", "erledigt", "abgesagt"] : ["neu", "kontakt", "geplant", "erledigt", "abgesagt"];
+  if (k.status === ziel || !darf.includes(k.status)) return;
+  await aendern("kunden", k.id, { status: ziel });
+  await notiz(k.id, `${zeile.vorlaeufig ? "Vorläufiger Termin" : "Termin"} am ${fmtTag.format(new Date(zeile.datum))}, ${fmtUhr.format(new Date(zeile.datum))} Uhr · Status → ${STATUS_NAME[ziel]}`);
+}
+
+// Google-Kalender „Klar Glas“ nachziehen: eintragen, verschieben oder austragen. Fehler stören das Speichern nicht.
+async function kalenderAbgleichen(id, aktion = "abgleichen") {
+  if (!id || db.lokal) return;
+  // Ohne Datum und ohne Kalendereintrag gibt es nichts abzugleichen
+  const a = daten.auftraege.find((x) => x.id === id);
+  if (a && !a.datum && !a.google_event_id) return;
+  try {
+    await terminAktion(id, aktion);
+    renderSpaeter();
+  } catch (e) {
+    zeigeToast(`Gespeichert, aber der Kalender hat nicht geklappt: ${e.message}`, 7000);
+  }
+}
+
+async function auftragLoeschen(a) {
+  if (a.google_event_id) await kalenderAbgleichen(a.id, "austragen");
+  await loeschen("auftraege", a.id);
+}
+
+// Termin ohne Geld: Besichtigung, Rückruf … Kunde ist freiwillig
+function dialogTermin(a = {}, kundeId = null) {
+  const kid = a.kunde_id || kundeId;
+  const kunden = [...daten.kunden].sort((x, y) => x.name.localeCompare(y.name, "de"));
+  const art = a.titel && !TERMIN_ARTEN.includes(a.titel) ? "Sonstiges" : a.titel || "Besichtigung";
+  oeffneDialog({
+    titel: a.id ? "Termin bearbeiten" : "Neuer Termin",
+    felder: `
+      <p class="hinweis">Ein Termin bringt kein Geld, z. B. eine Besichtigung. Er steht im Kalender, aber nicht bei Geld.</p>
+      <fieldset class="feld">
+        <legend>Was für ein Termin?</legend>
+        <div class="chips chips--wahl">${TERMIN_ARTEN.map((t) => `<label class="chip chip--wahl"><input type="radio" name="art_wahl" value="${esc(t)}"${t === art ? " checked" : ""} />${esc(t)}</label>`).join("")}</div>
+      </fieldset>
+      <label class="feld" data-eigener-titel ${art === "Sonstiges" ? "" : "hidden"}><span>Titel</span><input name="eigener_titel" value="${esc(art === "Sonstiges" && a.titel !== "Sonstiges" ? a.titel || "" : "")}" placeholder="Zum Beispiel: Angebot vorbeibringen" /></label>
+      <label class="feld"><span>Kunde (optional)</span><select name="kunde_id"><option value="">–</option>${optionen(kunden.map((k) => [k.id, k.name]), kid)}</select></label>
+      <div class="feldreihe">
+        <label class="feld"><span>Wann</span><input name="datum" type="datetime-local" required value="${esc(isoZuLokal(a.datum))}" /></label>
+        <label class="feld"><span>Dauer</span><select name="dauer_min">${optionen([[15, "15 Min."], [30, "30 Min."], [45, "45 Min."], [60, "1 Std."], [90, "1,5 Std."], [120, "2 Std."]], a.dauer_min || 30)}</select></label>
+      </div>
+      ${vorlaeufigSchalter(a)}
+      <label class="feld"><span>Notizen</span><textarea name="notiz" rows="3" placeholder="Zum Beispiel: Wintergarten anschauen, Fotos machen">${esc(a.notiz)}</textarea></label>
+      ${a.id ? `<label class="feld" style="grid-template-columns:auto 1fr;align-items:center;gap:.6rem"><input type="checkbox" name="abgesagt" ${a.abgesagt ? "checked" : ""} style="width:22px;min-height:22px" /><span>Abgesagt</span></label>` : ""}`,
+    nachOeffnen: (form) => {
+      form.addEventListener("change", () => {
+        $("[data-eigener-titel]", form).hidden = new FormData(form).get("art_wahl") !== "Sonstiges";
+      });
+    },
+    absenden: async (f) => {
+      const titel = f.art_wahl === "Sonstiges" ? f.eigener_titel.trim() || "Termin" : f.art_wahl;
+      const zeile = {
+        art: "termin",
+        titel,
+        leistung: titel,
+        kunde_id: f.kunde_id || null,
+        datum: lokalZuIso(f.datum),
+        dauer_min: Number(f.dauer_min) || 30,
+        vorlaeufig: Boolean(f.vorlaeufig),
+        notiz: f.notiz.trim() || null,
+        abgesagt: Boolean(f.abgesagt),
+        fenster_normal: 0,
+        fenster_boden: 0,
+      };
+      let gespeichert;
+      if (a.id) gespeichert = await aendern("auftraege", a.id, zeile);
+      else {
+        gespeichert = await neu("auftraege", zeile);
+        if (zeile.kunde_id) await notiz(zeile.kunde_id, `${titel} am ${fmtTag.format(new Date(zeile.datum))}, ${fmtUhr.format(new Date(zeile.datum))} Uhr eingetragen${zeile.vorlaeufig ? " (vorläufig)" : ""}`);
+      }
+      if (zeile.kunde_id && (!a.id || zeile.datum !== a.datum || zeile.vorlaeufig !== Boolean(a.vorlaeufig))) await statusNachTermin(zeile.kunde_id, zeile);
+      kalenderAbgleichen(gespeichert?.id || a.id);
+    },
+    entfernen: a.id ? () => auftragLoeschen(a) : null,
   });
 }
 
@@ -1896,10 +2063,13 @@ function tgTextFuer(betrag, geschaetzt) {
   return `davon Trinkgeld: <strong>${euro(tg)}</strong>${prozent !== null ? ` (${prozent} %)` : ""}`;
 }
 
+const d0 = (a) => Boolean(a.datum);
 function terminStatusChip(a) {
   let text = "geplant";
   let klasse = "status--kontakt";
   if (a.abgesagt) [text, klasse] = ["abgesagt", "status--abgesagt"];
+  else if (a.vorlaeufig) [text, klasse] = ["vorläufig", "status--geplant"];
+  else if (istTermin(a)) [text, klasse] = [d0(a) ? "fest" : "offen", "status--neu"];
   else if (zahl(a.bekommen) !== null) [text, klasse] = ["erledigt", "status--erledigt"];
   else if (a.termin_status === "angefragt") [text, klasse] = ["angefragt", "status--termin"];
   else if (a.termin_status === "bestaetigt") [text, klasse] = ["bestätigt", "status--neu"];
@@ -1973,11 +2143,12 @@ function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
   const besuche = k ? auftraegeVon(k.id).filter((x) => zahl(x.bekommen) !== null) : [];
   const quote = k ? trinkgeldQuote(auftraegeVon(k.id)) : null;
   // Uhrzeit von–bis, wenn eine Dauer eingetragen ist
-  const ende = d && stunden ? new Date(d.getTime() + stunden * 3600000) : null;
+  const dauerMin = istTermin(a) ? Number(a.dauer_min) || 0 : stunden ? stunden * 60 : 0;
+  const ende = d && dauerMin ? new Date(d.getTime() + dauerMin * 60000) : null;
   const uhr = d ? `${fmtUhr.format(d)}${ende ? ` – ${fmtUhr.format(ende)}` : ""}` : "";
 
   const kopf = `<header class="tk-kopf">
-      <button class="tk-bearbeiten" type="button" data-aktion="auftrag-bearbeiten" data-id="${esc(a.id)}" data-tk-bearbeiten aria-label="Auftrag bearbeiten">
+      <button class="tk-bearbeiten" type="button" data-aktion="auftrag-bearbeiten" data-id="${esc(a.id)}" data-tk-bearbeiten aria-label="${istTermin(a) ? "Termin" : "Auftrag"} bearbeiten">
         <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.stift}</svg><span>Bearbeiten</span>
       </button>
       <div class="tk-kopf__status">
@@ -2001,16 +2172,26 @@ function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
           <span class="tk-kunde__zur">Kundenseite öffnen</span>
         </span>
       </a>`
-    : `<p class="tk-kunde tk-kunde--leer">Kunde nicht mehr vorhanden</p>`;
+    : `<p class="tk-kunde tk-kunde--leer">${istTermin(a) ? `${esc(auftragTitel(a))} ohne Kunde` : "Kunde nicht mehr vorhanden"}</p>`;
 
   // Anrufen, Mail, Route: immer drei Kacheln gleicher Größe
   const schnell = `<div class="tk-schnell">
       ${tkSchnell(!!tel, `tel:${tel}`, "blau", ICONS.kontakt, "Anrufen")}
       ${tkSchnell(!!k?.email, `mailto:${k?.email || ""}`, "violett", ICONS.mail, "Mail")}
       ${tkSchnell(!!adresse, karte, "gruen", TK_ICON.pin, "Route", ' target="_blank" rel="noopener"')}
+      ${k?.nebenan_link ? tkSchnell(true, nebenanUrl(k.nebenan_link), "nebenan", ICONS.haus, "nebenan.de", ' target="_blank" rel="noopener"') : ""}
     </div>`;
 
-  const auftrag = tkGruppe("Auftrag", [
+  const notizAuftrag = a.notiz
+    ? `<section class="tk-notiz" aria-label="Notizen"><h3 class="tk-gruppe__titel">Notizen</h3><p>${esc(a.notiz)}</p></section>`
+    : "";
+
+  const auftrag = istTermin(a)
+    ? tkGruppe("Termin", [
+        tkInfo(ICONS.termin, "Art", esc(auftragTitel(a))),
+        a.dauer_min && tkInfo(ICONS.uhr, "Dauer", `${Number(a.dauer_min)} Min.`),
+      ])
+    : tkGruppe("Auftrag", [
     a.leistung && tkInfo(ICONS.aufgabe, "Leistung", esc(a.leistung)),
     fensterN + fensterB > 0 && tkInfo(TK_ICON.fenster, "Umfang", `${fensterN} normale · ${fensterB} bodentiefe`),
     stunden !== null && tkInfo(ICONS.uhr, "Dauer", `${esc(String(stunden).replace(".", ","))} Std.`),
@@ -2028,9 +2209,19 @@ function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
     notiz && tkInfo(ICONS.stift, "Letzte Notiz", `${esc(notiz.text)} <small class="leise">· ${esc(fmtDatum.format(new Date(notiz.erstellt)))}</small>`),
   ]);
 
+  // Vorläufig: oben ein deutlicher Hinweis mit „Fix machen“
+  const vorlaeufig = a.vorlaeufig && !a.abgesagt
+    ? `<section class="tk-vorlaeufig">
+        <p><b>Noch nicht bestätigt.</b> Ungefähr ausgemacht – erst „Fix machen“, wenn der Kunde zugesagt hat.</p>
+        <button class="knopf knopf--voll" type="button" data-aktion="termin-fix" data-id="${esc(a.id)}">Fix machen</button>
+      </section>`
+    : "";
+
   // Bezahlt-Bereich: eigene Ebene, das Wichtigste auf der Karte
   let geld;
-  if (bezahlt && !bearbeiten) {
+  if (istTermin(a)) {
+    geld = "";
+  } else if (bezahlt && !bearbeiten) {
     const tg = trinkgeld(a);
     geld = `<section class="tk-geld tk-geld--bezahlt" aria-labelledby="tk-geld-titel">
       <div class="tk-geld__zeile">
@@ -2075,8 +2266,10 @@ function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
   }
 
   return `${kopf}
+    ${vorlaeufig}
     ${kunde}
     ${schnell}
+    ${notizAuftrag}
     ${auftrag}${kontakt}${verlauf}
     ${geld}`;
 }
@@ -2167,6 +2360,188 @@ function karteZurueckOeffnen() {
   oeffneTerminkarte(id); // gelöschter Auftrag: dann geht nichts auf
 }
 
+/* ===================== Neue Anfrage: großes Popup ===================== */
+
+// Welche Anfragen dieses Gerät schon gezeigt hat; ohne Speicher kommt das Popup halt nochmal
+const GESEHEN_SCHLUESSEL = "klarglas-anfragen-gesehen";
+function gesehenListe() {
+  try {
+    return JSON.parse(localStorage.getItem(GESEHEN_SCHLUESSEL)) || [];
+  } catch {
+    return [];
+  }
+}
+function anfrageGesehen(id) {
+  const liste = gesehenListe();
+  if (liste.includes(id)) return;
+  try {
+    localStorage.setItem(GESEHEN_SCHLUESSEL, JSON.stringify([...liste, id].slice(-200)));
+  } catch {}
+}
+
+// Offene Wunschtermine und frische Website-Anfragen ohne Termin
+const neueAnfragen = () => {
+  const vor7Tagen = Date.now() - 7 * 864e5;
+  return daten.auftraege
+    .filter(
+      (a) =>
+        !a.abgesagt &&
+        (a.termin_status === "angefragt" ||
+          (a.kanal === "website" && !a.datum && kundeVon(a.kunde_id)?.status === "neu" && new Date(a.erstellt) > vor7Tagen))
+    )
+    .sort((a, b) => new Date(b.erstellt || 0) - new Date(a.erstellt || 0));
+};
+
+const anfragePopup = $("[data-anfrage-popup]");
+
+function anfragePopupPruefen() {
+  if (!db || anfragePopup.open || $("[data-dialog]").open || diagrammDialog.open || terminkarte.open || $("[data-menue-sheet]").open) return;
+  const gesehen = gesehenListe();
+  const offen = neueAnfragen().filter((a) => !gesehen.includes(a.id));
+  if (!offen.length) return;
+  const a = offen[0];
+  const k = kundeVon(a.kunde_id) || {};
+  const d = a.datum ? new Date(a.datum) : null;
+  const fenster = a.fenster_normal || a.fenster_boden ? `${Number(a.fenster_normal || 0)} normale + ${Number(a.fenster_boden || 0)} bodentiefe Fenster` : "";
+  const info = (titel, wert) => (wert ? `<div class="ap-info"><dt>${titel}</dt><dd>${wert}</dd></div>` : "");
+  $("[data-ap-inhalt]").innerHTML = `
+    <p class="ap-oben">${kanalMarke(a.kanal)}<span>Neue Anfrage${offen.length > 1 ? ` · noch ${offen.length - 1} weitere` : ""}</span></p>
+    <h2 class="ap-name" id="ap-titel">${esc(k.name || "Unbekannt")}</h2>
+    <p class="ap-wann">${d ? `${esc(fmtTagLang.format(d))} · ${esc(fmtUhr.format(d))} Uhr` : "Noch kein Wunschtermin"}</p>
+    <dl class="ap-infos">
+      ${info("Leistung", esc(a.leistung || ""))}
+      ${info("Fenster", esc(fenster))}
+      ${info("Preis", zahl(a.geschaetzt) !== null ? `ca. ${euro(a.geschaetzt)}` : "")}
+      ${info("Adresse", esc(k.adresse || ""))}
+      ${info("Kontakt", [k.telefon && `<a href="tel:${esc(k.telefon)}">${esc(k.telefon)}</a>`, k.email && `<a href="mailto:${esc(k.email)}">${esc(k.email)}</a>`].filter(Boolean).join(" · "))}
+      ${info("Nachricht", a.notiz ? esc(a.notiz) : "")}
+    </dl>
+    <div class="ap-knoepfe">
+      ${
+        a.termin_status === "angefragt"
+          ? `<button class="knopf knopf--voll knopf--gross" type="button" autofocus data-aktion="termin-bestaetigen" data-id="${esc(a.id)}">Bestätigen</button>
+             <button class="knopf knopf--gross" type="button" data-aktion="termin-verschieben" data-id="${esc(a.id)}">Anderer Termin</button>
+             <button class="knopf knopf--leise knopf--gefahr knopf--gross" type="button" data-aktion="termin-ablehnen" data-id="${esc(a.id)}">Ablehnen</button>`
+          : `<a class="knopf knopf--voll knopf--gross" autofocus href="#kunde/${esc(a.kunde_id)}" data-ap-gesehen="${esc(a.id)}">Kunde öffnen</a>`
+      }
+    </div>
+    <button class="ap-spaeter" type="button" data-ap-spaeter="${esc(a.id)}">Später – bleibt in der Übersicht stehen</button>`;
+  anfragePopup.showModal();
+}
+
+anfragePopup.addEventListener("click", (e) => {
+  const ziel = e.target;
+  const knopf = ziel.closest("[data-ap-spaeter], [data-ap-gesehen], [data-aktion]");
+  // Was man hier angetippt hat, gilt als gesehen; data-aktion läuft danach über die normale Bedienung
+  if (knopf) anfrageGesehen(knopf.dataset.apSpaeter || knopf.dataset.apGesehen || knopf.dataset.id);
+  if (ziel === anfragePopup || knopf) anfragePopup.close();
+});
+anfragePopup.addEventListener("close", () => setTimeout(anfragePopupPruefen, 400));
+
+/* ===================== Mails an Kunden ===================== */
+
+// Fertige Mail fürs Mailprogramm; abschicken macht ihr selbst
+function kundenMail(k, art, a) {
+  const d = a.datum ? new Date(a.datum) : null;
+  const wann = d ? `${fmtTagLang.format(d)} um ${fmtUhr.format(d)} Uhr` : "";
+  const gruss = "Viele Grüße\nLouis & Lukas, Klar Glas";
+  if (art === "bestaetigt") {
+    const wofuer = istTermin(a) ? `zur ${auftragTitel(a)}` : "";
+    return {
+      betreff: `Ihr Termin bei Klar Glas am ${d ? fmtTagLang.format(d) : ""}`,
+      text:
+        `Guten Tag ${k.name},\n\nIhr Termin steht: Wir kommen ${wann} ${wofuer} vorbei.\n\n`.replace("  ", " ") +
+        (k.adresse ? `Ort: ${k.adresse}\n` : "") +
+        (istTermin(a) ? "\n" : `Leistung: ${a.leistung}\n${zahl(a.geschaetzt) !== null ? `Geschätzter Preis: ca. ${euro(a.geschaetzt)} (Sie zahlen bar vor Ort)` : "Sie zahlen bar vor Ort."}\n\n`) +
+        `Falls etwas dazwischenkommt, antworten Sie einfach auf diese Mail.\n\n${gruss}`,
+    };
+  }
+  if (art === "vorschlag") {
+    return {
+      betreff: "Neuer Terminvorschlag – Klar Glas",
+      text: `Guten Tag ${k.name},\n\nIhr Wunschtermin klappt leider nicht – passt Ihnen ${wann} stattdessen?\nAntworten Sie kurz mit Ja, dann tragen wir ihn fest ein.\n\n${gruss}`,
+    };
+  }
+  return {
+    betreff: "Ihr Wunschtermin bei Klar Glas",
+    text: `Guten Tag ${k.name},\n\nleider passt Ihr Wunschtermin zeitlich nicht in unseren Plan. Bitte wählen Sie einen neuen Termin auf klarglas-berlin.de/kontakt.html oder antworten Sie auf diese Mail.\n\n${gruss}`,
+  };
+}
+
+// Öffnet das Mailprogramm; ohne Adresse ein Hinweis, wie man den Kunden sonst erreicht
+function mailOeffnen(k, art, a, erledigt) {
+  if (!k?.email) {
+    const weg = k?.nebenan_link || a.kanal === "nebenan" ? "schreib auf nebenan.de" : k?.telefon ? "ruf kurz an" : "meld dich beim Kunden";
+    zeigeToast(`${erledigt}. Keine E-Mail hinterlegt – ${weg}`, 5000);
+    return;
+  }
+  const { betreff, text } = kundenMail(k, art, a);
+  zeigeToast(erledigt);
+  location.href = `mailto:${k.email}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(text)}`;
+}
+
+/* ===================== Push-Benachrichtigungen ===================== */
+
+const pushGeht = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && Boolean(CFG.VAPID_PUBLIC);
+const istIphoneImBrowser = () => /iPhone|iPad/.test(navigator.userAgent) && !navigator.standalone;
+let pushAn = false;
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker
+    .register("sw.js")
+    .then((r) => r.pushManager?.getSubscription())
+    .then((abo) => {
+      pushAn = Boolean(abo) && Notification.permission === "granted";
+      if (route().bereich === "einstellungen") renderSpaeter();
+    })
+    .catch(() => {});
+}
+
+const base64UrlZuBytes = (text) => {
+  const b = atob(text.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(text.length / 4) * 4, "="));
+  return Uint8Array.from(b, (c) => c.charCodeAt(0));
+};
+
+function pushText() {
+  if (pushAn) return "An – neue Anfragen kommen als Mitteilung auf dieses Gerät.";
+  if (istIphoneImBrowser()) return "Am iPhone geht das nur in der App vom Home-Bildschirm (Teilen → Zum Home-Bildschirm).";
+  if (!pushGeht()) return "Dieser Browser kann leider keine Mitteilungen.";
+  if (Notification.permission === "denied") return "Blockiert – in den Einstellungen des Geräts für Klar Glas erlauben.";
+  return "Aus – dieses Gerät meldet neue Anfragen nicht.";
+}
+
+async function pushUmschalten() {
+  if (!pushGeht() || istIphoneImBrowser()) return zeigeToast(pushText(), 6000);
+  try {
+    if (pushAn) {
+      const reg = await navigator.serviceWorker.ready;
+      const abo = await reg.pushManager.getSubscription();
+      if (abo) {
+        if (!db.lokal) await supa.from("push_abos").delete().eq("endpoint", abo.endpoint);
+        await abo.unsubscribe();
+      }
+      pushAn = false;
+      zeigeToast("Mitteilungen aus");
+    } else {
+      // Muss direkt aus dem Tippen kommen, sonst fragt das iPhone nicht
+      const erlaubnis = await Notification.requestPermission();
+      if (erlaubnis !== "granted") return zeigeToast(pushText(), 6000);
+      const reg = await navigator.serviceWorker.ready;
+      const abo = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlZuBytes(CFG.VAPID_PUBLIC) });
+      const j = abo.toJSON();
+      if (!db.lokal) {
+        const { error } = await supa.from("push_abos").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, wer: ich });
+        if (error) throw new Error(error.message);
+      }
+      pushAn = true;
+      zeigeToast("Mitteilungen an");
+    }
+  } catch (e) {
+    zeigeToast(`Mitteilungen gingen nicht: ${e.message}`, 7000);
+  }
+  if (route().bereich === "einstellungen") render();
+}
+
 /* ===================== Bedienung ===================== */
 
 document.addEventListener("click", async (event) => {
@@ -2176,10 +2551,15 @@ document.addEventListener("click", async (event) => {
   const finden = (t) => daten[t].find((x) => x.id === id);
 
   switch (aktion) {
+    case "push-umschalten": return pushUmschalten();
     case "kunde-neu": return dialogKunde();
     case "kunde-bearbeiten": return dialogKunde(kundeVon(id));
     case "auftrag-neu": return dialogAuftrag({}, el.dataset.kunde || (route().bereich === "kunde" ? route().id : null));
-    case "auftrag-bearbeiten": return dialogAuftrag(finden("auftraege"));
+    case "auftrag-bearbeiten": {
+      const a = finden("auftraege");
+      return istTermin(a) ? dialogTermin(a) : dialogAuftrag(a);
+    }
+    case "termin-neu": return dialogTermin({}, el.dataset.kunde || (route().bereich === "kunde" ? route().id : null));
     case "termin-karte": return oeffneTerminkarte(id);
     case "ausgabe-neu": return dialogAusgabe();
     case "ausgabe-bearbeiten": return dialogAusgabe(finden("ausgaben"));
@@ -2245,19 +2625,19 @@ document.addEventListener("click", async (event) => {
           return;
         }
       }
-      if (!k?.email) {
-        zeigeToast("Bestätigt. Keine E-Mail hinterlegt – ruf kurz an");
-        return render();
-      }
-      const d = new Date(a.datum);
-      const betreff = encodeURIComponent(`Ihr Termin bei Klar Glas am ${fmtTagLang.format(d)}`);
-      const text = encodeURIComponent(
-        `Guten Tag ${k.name},\n\nIhr Terminwunsch ist bestätigt. Wir kommen ${fmtTagLang.format(d)} um ${fmtUhr.format(d)} Uhr vorbei.\n\n` +
-        `Ort: ${k.adresse}\nLeistung: ${a.leistung}\n${a.geschaetzt ? `Geschätzter Preis: ca. ${euro(a.geschaetzt)} (Sie zahlen bar vor Ort)` : "Sie zahlen bar vor Ort."}\n\n` +
-        `Falls etwas dazwischenkommt, antworten Sie einfach auf diese Mail.\n\n` +
-        `Viele Grüße\nLouis & Lukas, Klar Glas`
-      );
-      location.href = `mailto:${k.email}?subject=${betreff}&body=${text}`;
+      anfrageGesehen(id);
+      mailOeffnen(k, "bestaetigt", a, "Bestätigt");
+      return render();
+    }
+    case "termin-fix": {
+      const a = finden("auftraege");
+      if (!a.datum) return istTermin(a) ? dialogTermin(a) : dialogAuftrag(a);
+      const fest = { vorlaeufig: false, ...(a.termin_status === "angefragt" ? { termin_status: "bestaetigt" } : {}) };
+      await aendern("auftraege", id, fest);
+      if (a.kunde_id) await statusNachTermin(a.kunde_id, { ...a, ...fest });
+      await kalenderAbgleichen(id);
+      if (terminkarte.open) terminkarteZeichnen();
+      mailOeffnen(kundeVon(a.kunde_id), "bestaetigt", a, "Termin steht fest");
       return render();
     }
     case "termin-ablehnen": {
@@ -2275,15 +2655,8 @@ document.addEventListener("click", async (event) => {
           return;
         }
       }
-      if (k?.email) {
-        const betreff = encodeURIComponent("Ihr Wunschtermin bei Klar Glas");
-        const text = encodeURIComponent(
-          `Guten Tag ${k.name},\n\nleider passt Ihr Wunschtermin zeitlich nicht in unseren Plan. ` +
-          `Bitte wählen Sie einen neuen Termin auf klarglas-berlin.de/kontakt.html oder antworten Sie auf diese Mail.\n\n` +
-          `Viele Grüße\nLouis & Lukas, Klar Glas`
-        );
-        location.href = `mailto:${k.email}?subject=${betreff}&body=${text}`;
-      }
+      anfrageGesehen(id);
+      mailOeffnen(k, "abgelehnt", a, "Abgelehnt");
       return render();
     }
     case "termin-verschieben": {
@@ -2295,17 +2668,8 @@ document.addEventListener("click", async (event) => {
           const neuIso = lokalZuIso(f.datum);
           await aendern("auftraege", id, { datum: neuIso });
           await notiz(a.kunde_id, `Termin vorgeschlagen: ${fmtTagLang.format(new Date(neuIso))} ${fmtUhr.format(new Date(neuIso))}`);
-          const k = kundeVon(a.kunde_id);
-          if (k?.email) {
-            const d = new Date(neuIso);
-            const betreff = encodeURIComponent("Neuer Wunschtermin – Klar Glas");
-            const text = encodeURIComponent(
-              `Guten Tag ${k.name},\n\nIhr Wunschtermin klappt leider nicht – passt Ihnen ${fmtTagLang.format(d)} um ${fmtUhr.format(d)} Uhr stattdessen?\n` +
-              `Antworten Sie kurz mit Ja, dann tragen wir ihn fest ein.\n\n` +
-              `Viele Grüße\nLouis & Lukas, Klar Glas`
-            );
-            location.href = `mailto:${k.email}?subject=${betreff}&body=${text}`;
-          }
+          anfrageGesehen(id);
+          mailOeffnen(kundeVon(a.kunde_id), "vorschlag", { ...a, datum: neuIso }, "Neuer Termin vorgeschlagen");
         },
       });
       return;
@@ -2372,9 +2736,11 @@ inhalt.addEventListener("submit", async (event) => {
     zeigeToast(`${euro(bekommen)} eingetragen`);
     render();
   } else if (form.dataset.notizForm) {
-    const text = new FormData(form).get("text").trim();
+    const f = new FormData(form);
+    const text = f.get("text").trim();
     if (!text) return;
-    await notiz(form.dataset.notizForm, text, false);
+    const quelle = f.get("quelle") || "notiz";
+    await neu("notizen", { kunde_id: form.dataset.notizForm, text, autor: ich, automatisch: false, quelle: quelle === "notiz" ? null : quelle });
     render();
   }
 });
@@ -2606,6 +2972,7 @@ $("[data-menue]").addEventListener("click", () => {
   $("[data-menue-name]").textContent = ich ? `Angemeldet als ${ich}` : "";
   $("[data-menue-passwort]").hidden = $("[data-passwort-setzen]").hidden;
   $("[data-menue-abmelden]").hidden = $("[data-abmelden]").hidden;
+  $("[data-menue-push]").textContent = pushAn ? "Mitteilungen ausschalten" : "Mitteilungen bei neuen Anfragen";
   menueSheet.showModal();
 });
 
@@ -2618,6 +2985,11 @@ menueSheet.addEventListener("click", (e) => {
   if (ziel.closest("[data-menue-passwort]")) {
     menueSheet.close();
     $("[data-passwort-setzen]").click();
+    return;
+  }
+  if (ziel.closest("[data-menue-push]")) {
+    menueSheet.close();
+    pushUmschalten();
     return;
   }
   if (ziel.closest("[data-menue-abmelden]")) {

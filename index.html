@@ -115,6 +115,11 @@
       <div class="terminkarte__inhalt" data-tk-inhalt></div>
     </dialog>
 
+    <dialog class="anfrage-popup" data-anfrage-popup aria-labelledby="ap-titel">
+      <div class="anfrage-popup__griff" aria-hidden="true"></div>
+      <div class="anfrage-popup__inhalt" data-ap-inhalt></div>
+    </dialog>
+
     <dialog class="menue-sheet" data-menue-sheet aria-labelledby="menue-titel">
       <div class="menue-sheet__griff" aria-hidden="true"></div>
       <div class="menue-sheet__kopf">
@@ -123,6 +128,7 @@
       </div>
       <ul class="menue-sheet__liste">
         <li><a class="menue-sheet__zeile" href="#zeiten" data-menue-link>Wann wir können</a></li>
+        <li><button class="menue-sheet__zeile" type="button" data-menue-push>Mitteilungen bei neuen Anfragen</button></li>
         <li><button class="menue-sheet__zeile" type="button" data-menue-passwort hidden>Passwort ändern</button></li>
         <li><button class="menue-sheet__zeile menue-sheet__zeile--gefahr" type="button" data-menue-abmelden hidden>Abmelden</button></li>
       </ul>
