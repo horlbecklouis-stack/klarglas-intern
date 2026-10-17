@@ -13,9 +13,33 @@
     <link rel="icon" href="icon.svg?v=3" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon-180.png?v=3" />
     <link rel="preload" href="figtree-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="app.css?v=12" />
+    <link rel="stylesheet" href="app.css?v=13" />
+    <link rel="stylesheet" href="handy.css?v=13" />
   </head>
   <body>
+    <!-- Handy: Lade-Animation, Abzieher wischt die Scheibe frei -->
+    <div class="h-lade" data-h-lade aria-hidden="true">
+      <div class="h-lade__scheibe">
+        <svg class="h-lade__logo" viewBox="0 0 32 32">
+          <rect x="2.5" y="2.5" width="27" height="27" rx="4" fill="none" stroke="#fff" stroke-width="2.4" />
+          <path d="M16 3v26M3 16h26" stroke="#fff" stroke-width="2.4" />
+          <path d="M6.5 25.5 25.5 6.5" stroke="#2B5CFF" stroke-width="3.2" stroke-linecap="round" />
+          <circle cx="9.6" cy="9.6" r="2.1" fill="#fff" />
+        </svg>
+        <span class="h-lade__nebel"></span>
+        <span class="h-lade__abzieher"></span>
+      </div>
+      <p class="h-lade__wort"><b>Klar</b>Glas</p>
+    </div>
+
+    <!-- Handy: Leiste oben -->
+    <div class="h-leiste" data-h-leiste>
+      <button class="h-leiste__zurueck" type="button" data-h="zurueck" data-h-zurueck hidden>
+        <svg viewBox="0 0 12 20" aria-hidden="true"><path d="M10 2 2 10l8 8" /></svg><span>Zurück</span>
+      </button>
+      <p class="h-leiste__titel" data-h-leiste-titel></p>
+      <div class="h-leiste__rechts" data-h-leiste-rechts></div>
+    </div>
     <header class="kopf">
       <a class="marke" href="#uebersicht" aria-label="Klar Glas – Übersicht">
         <svg class="marke__zeichen" viewBox="0 0 32 32" aria-hidden="true">
@@ -136,8 +160,69 @@
 
     <div class="toast" data-toast role="status" aria-live="polite"></div>
 
+    <!-- Handy: Tabbar -->
+    <nav class="h-tabs" aria-label="Bereiche" data-h-tabs>
+      <a href="#uebersicht" data-ziel="uebersicht">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><g class="h-tab__linie"><rect x="3.5" y="3.5" width="7" height="9" rx="2"/><rect x="13.5" y="11.5" width="7" height="9" rx="2"/><rect x="3.5" y="15.5" width="7" height="5" rx="2"/><rect x="13.5" y="3.5" width="7" height="5" rx="2"/></g><g class="h-tab__voll"><rect x="3" y="3" width="8" height="10" rx="2.3"/><rect x="13" y="11" width="8" height="10" rx="2.3"/><rect x="3" y="15" width="8" height="6" rx="2.3"/><rect x="13" y="3" width="8" height="6" rx="2.3"/></g></svg>
+        <span>Übersicht</span>
+      </a>
+      <a href="#kunden" data-ziel="kunden">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><g class="h-tab__linie"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-6 6.5-6s5.9 2.4 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .7 3.2 2.9 3.5 6"/></g><g class="h-tab__voll"><circle cx="9" cy="7.8" r="4"/><path d="M2 20.5C2.6 16.3 5.4 13.5 9 13.5s6.4 2.8 7 7z"/><path d="M15.6 3.6a4.2 4.2 0 0 1 0 8.4 6 6 0 0 0 0-8.4zM17.6 13.7c2.6.7 4.1 3.3 4.4 6.8h-4.3c-.3-2.6-1.3-5-3.2-6.6z"/></g></svg>
+        <span>Kunden</span>
+      </a>
+      <a href="#kalender" data-ziel="kalender">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><g class="h-tab__linie"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></g><g class="h-tab__voll"><path d="M6 4.3h12A3.2 3.2 0 0 1 21.2 7.5v1.8H2.8V7.5A3.2 3.2 0 0 1 6 4.3zM2.8 10.8h18.4v6.9a3.2 3.2 0 0 1-3.2 3.2H6a3.2 3.2 0 0 1-3.2-3.2z"/><rect x="7" y="2.2" width="2" height="4.6" rx="1"/><rect x="15" y="2.2" width="2" height="4.6" rx="1"/></g></svg>
+        <span>Kalender</span>
+      </a>
+      <a href="#geld" data-ziel="geld">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><g class="h-tab__linie"><rect x="2.5" y="6" width="19" height="12.5" rx="3"/><circle cx="12" cy="12.25" r="2.75"/></g><g class="h-tab__voll"><path fill-rule="evenodd" d="M5.2 5.3h13.6a3.4 3.4 0 0 1 3.4 3.4v7.1a3.4 3.4 0 0 1-3.4 3.4H5.2a3.4 3.4 0 0 1-3.4-3.4V8.7a3.4 3.4 0 0 1 3.4-3.4zM12 9a3.25 3.25 0 1 0 0 6.5A3.25 3.25 0 0 0 12 9z"/></g></svg>
+        <span>Geld</span>
+      </a>
+      <a href="#aufgaben" data-ziel="aufgaben">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><g class="h-tab__linie"><circle cx="6" cy="7" r="2.5"/><circle cx="6" cy="17" r="2.5"/><path d="M11.5 7h9M11.5 17h9"/></g><g class="h-tab__voll"><circle cx="6" cy="7" r="3.2"/><circle cx="6" cy="17" r="3.2"/><rect x="11" y="5.9" width="10" height="2.2" rx="1.1"/><rect x="11" y="15.9" width="10" height="2.2" rx="1.1"/></g></svg>
+        <span>Aufgaben</span>
+      </a>
+    </nav>
+
+    <!-- Handy: + Knopf -->
+    <div class="h-fab" data-h-fab>
+      <div class="h-fab__schleier" data-h="fab-zu"></div>
+      <ul class="h-fab__liste" role="menu" aria-label="Neu anlegen">
+        <li style="--i:3"><button type="button" role="menuitem" data-aktion="ausgabe-neu" data-h-fab-aktion>Ausgabe</button></li>
+        <li style="--i:2"><button type="button" role="menuitem" data-aktion="kunde-neu" data-h-fab-aktion>Kunde</button></li>
+        <li style="--i:1"><button type="button" role="menuitem" data-aktion="termin-neu" data-h-fab-aktion>Termin</button></li>
+        <li style="--i:0"><button class="ist-haupt" type="button" role="menuitem" data-aktion="auftrag-neu" data-h-fab-aktion>Auftrag</button></li>
+      </ul>
+      <button class="h-fab__knopf" type="button" data-h="fab" aria-label="Neu anlegen" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5v15M4.5 12h15"/></svg>
+      </button>
+    </div>
+
+    <!-- Handy: Panel hinter dem Namens-Kreis -->
+    <div class="h-panel" data-h-panel hidden>
+      <div class="h-panel__schleier" data-h-panel-schleier></div>
+      <div class="h-panel__karte" role="dialog" aria-modal="true" aria-label="Menü">
+        <div class="h-panel__kopf">
+          <span class="h-ava h-ava--mittel" data-h-panel-ava></span>
+          <div><p class="h-panel__name" data-h-panel-name></p><p class="h-panel__unter">Klar Glas intern</p></div>
+        </div>
+        <div class="h-gruppe">
+          <a class="h-panel__zeile" href="#team"><span class="h-panel__icon h-panel__icon--blau"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-6 6.5-6s5.9 2.4 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .7 3.2 2.9 3.5 6"/></svg></span>Team</a>
+          <a class="h-panel__zeile" href="#einstellungen"><span class="h-panel__icon h-panel__icon--grau"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg></span>Einstellungen</a>
+          <a class="h-panel__zeile" href="#zeiten"><span class="h-panel__icon h-panel__icon--orange"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg></span>Wann wir können</a>
+          <button class="h-panel__zeile" type="button" data-h="push"><span class="h-panel__icon h-panel__icon--rot"><svg viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/></svg></span>Mitteilungen<span class="h-schalter h-schalter--klein" role="switch" aria-checked="false" data-h-panel-push><span></span></span></button>
+        </div>
+        <div class="h-gruppe">
+          <button class="h-panel__zeile" type="button" data-h="passwort" data-h-panel-passwort hidden><span class="h-panel__icon h-panel__icon--grau"><svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg></span>Passwort ändern</button>
+          <button class="h-panel__zeile h-panel__zeile--rot" type="button" data-h="abmelden" data-h-panel-abmelden hidden>Abmelden</button>
+        </div>
+        <span class="h-panel__griff" aria-hidden="true"></span>
+      </div>
+    </div>
+
     <script src="config.js?v=11"></script>
     <script src="supabase.js"></script>
-    <script src="app.js?v=12"></script>
+    <script src="handy.js?v=13"></script>
+    <script src="app.js?v=13"></script>
   </body>
 </html>

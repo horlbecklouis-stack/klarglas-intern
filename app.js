@@ -1213,25 +1213,14 @@ function kalenderFarbe(k, i) {
 }
 
 function ansichtKalender() {
-  const handy = istHandy();
-  const termine = kommendeTermine().slice(0, handy ? 8 : 10);
-  let lesend = 0;
-  const kalender = sichtbareKalender().map((k) => ({ ...k, farbe: kalenderFarbe(k, k.art === "eintragen" ? 0 : lesend++) }));
-  const quellen = kalender.map((k) => `src=${encodeURIComponent(k.kalender_id)}&color=${encodeURIComponent(k.farbe)}`).join("&");
-  const legende = kalender.length > 1
-    ? `<ul class="kal-legende" aria-label="Angezeigte Kalender">${kalender.map((k) => `<li><span class="kal-legende__punkt" style="background:${k.farbe}"></span>${esc(k.name)}<span class="leise"> · ${k.art === "eintragen" ? "Termine" : "nur lesen"}</span></li>`).join("")}</ul>`
-    : "";
-  const einbetten = kalender.length
-    ? `${legende}<iframe class="kalender" title="Google-Kalender" loading="lazy"
-        src="https://calendar.google.com/calendar/embed?${quellen}&ctz=Europe%2FBerlin&hl=de&mode=${window.matchMedia("(min-width: 900px)").matches ? "WEEK" : "AGENDA"}&wkst=2&showTitle=0&showPrint=0&showCalendars=0&showTz=0"></iframe>
-       <p class="hinweis">Leer oder fehlt ein Kalender? Dann im selben Browser bei Google mit einem Konto anmelden, das diese Kalender sehen darf.</p>`
-    : `<section class="karte"><h2>Google-Kalender verbinden</h2>
-        <p class="leise">Unter <a href="#zeiten">Wann wir können</a> → „+ Kalender hinzufügen“ euren Kalender eintragen.</p></section>`;
+  const termine = kommendeTermine().slice(0, 10);
+  const verbunden = sichtbareKalender().length;
   return `
-    <div class="kopfzeile"><div><h1>Kalender</h1><p class="leise">Termine und Blocker aus allen verbundenen Kalendern</p></div></div>
-    ${handy ? terminListeHandy(termine) : ""}
-    ${einbetten}
-    <section class="karte" ${handy ? "hidden" : ""} aria-labelledby="t-kommend">
+    <div class="kopfzeile"><div><h1>Kalender</h1><p class="leise">Eure Aufträge und Termine, grau = woanders schon belegt</p></div></div>
+    ${verbunden ? "" : `<section class="karte"><h2>Google-Kalender verbinden</h2>
+        <p class="leise">Unter <a href="#zeiten">Wann wir können</a> → „+ Kalender hinzufügen“ euren Kalender eintragen. Dann werden belegte Zeiten hier grau angezeigt.</p></section>`}
+    ${kalWoche()}
+    <section class="karte" aria-labelledby="t-kommend">
       ${kartenTitel("t-kommend", "blau", "uhr", "Kommende Aufträge")}
       ${termine.length ? `<ul class="liste">${termine.map(terminZeile).join("")}</ul>` : `<p class="leer">Keine Termine eingetragen.</p>`}
     </section>`;
@@ -1335,7 +1324,7 @@ function diagrammFuer(zeige, zeitraum, stichtag) {
 }
 
 // Auf dem Handy immer der Monat; am Computer der gewählte Zeitraum
-const aktuellerZeitraum = () => (istHandy() ? "monat" : zustand.geldZeitraum);
+const aktuellerZeitraum = () => zustand.geldZeitraum;
 
 // Aufteilung 50/50 (nur Desktop): wer bekommt noch wie viel
 function aufteilungKarte() {
@@ -1855,8 +1844,11 @@ function render() {
   const fokusId = aktiv && aktiv.id;
   const cursor = fokusId && "selectionStart" in aktiv ? aktiv.selectionStart : null;
 
-  const ansichten = { uebersicht: ansichtUebersicht, kunden: ansichtKunden, kunde: () => ansichtKunde(id), kalender: ansichtKalender, geld: ansichtGeld, aufgaben: ansichtAufgaben, zeiten: ansichtZeiten, einstellungen: ansichtEinstellungen, mitarbeiter: () => ansichtMitarbeiter(id) };
-  inhalt.innerHTML = (ansichten[bereich] || ansichtUebersicht)();
+  const handy = istHandy();
+  document.body.classList.toggle("handy", handy);
+  const ansichten = { uebersicht: ansichtUebersicht, kunden: ansichtKunden, kunde: () => ansichtKunde(id), kalender: ansichtKalender, geld: ansichtGeld, aufgaben: ansichtAufgaben, zeiten: ansichtZeiten, einstellungen: ansichtEinstellungen, team: ansichtEinstellungen, mitarbeiter: () => ansichtMitarbeiter(id) };
+  // Am Handy eigene Ansichten im Apple-Stil (handy.js)
+  inhalt.innerHTML = handy && HANDY[bereich] ? HANDY[bereich](id, abfrage) : handy ? HANDY.uebersicht() : (ansichten[bereich] || ansichtUebersicht)();
   // Die Pille im Zeitraum-Schalter gleitet von der alten Stufe zur neuen
   const pille = $(".segment__pille", inhalt);
   if (pille) {
@@ -1889,6 +1881,7 @@ function render() {
     zeigeBeimRendern = null;
     oeffneDiagramm(zeige);
   }
+  if (handy) hNachRender(bereich, id);
   wartetAufRender = false;
   anfragePopupPruefen();
 }
@@ -1928,6 +1921,11 @@ let dialogAbsenden = null;
 
 function oeffneDialog({ titel, felder, knopf = "Speichern", absenden, entfernen, nachOeffnen }) {
   dialogForm.innerHTML = `
+    <div class="dialog__kopf-handy">
+      <button type="button" data-dialog-zu-handy>Abbrechen</button>
+      <strong>${esc(titel)}</strong>
+      <button type="submit">${esc(knopf === "Speichern" ? "Sichern" : knopf)}</button>
+    </div>
     <h2>${esc(titel)}</h2>
     ${felder}
     <p class="meldung minus" data-dialog-fehler></p>
@@ -1941,6 +1939,7 @@ function oeffneDialog({ titel, felder, knopf = "Speichern", absenden, entfernen,
     dialog.close();
     karteZurueckOeffnen();
   };
+  $("[data-dialog-zu-handy]", dialogForm).onclick = () => $("[data-dialog-zu]", dialogForm).click();
   if (entfernen) {
     $("[data-dialog-entfernen]", dialogForm).onclick = async () => {
       if (!confirm("Wirklich löschen? Das lässt sich nicht rückgängig machen.")) return;
@@ -1952,8 +1951,8 @@ function oeffneDialog({ titel, felder, knopf = "Speichern", absenden, entfernen,
   }
   dialog.showModal();
   nachOeffnen?.(dialogForm);
-  const erstes = dialogForm.querySelector("input, select, textarea");
-  erstes?.focus();
+  // Am Handy nicht sofort die Tastatur aufklappen
+  if (!istHandy()) dialogForm.querySelector("input, select, textarea")?.focus();
 }
 
 dialogForm.addEventListener("submit", async (event) => {
@@ -3210,6 +3209,7 @@ async function starten(neueDb, name) {
     renderSpaeter();
   });
   render();
+  hLadeFertig();
 }
 
 // Team-Liste enthält nur SHA-256-Werte der Adressen
@@ -3230,6 +3230,7 @@ const linkGesperrtBis = () => {
 };
 
 function anmeldungZeigen(client, meldung = "") {
+  hLadeFertig();
   inhalt.hidden = true;
   $("[data-nav]").hidden = true;
   $("[data-anmeldung]").hidden = false;
@@ -3387,3 +3388,5 @@ document.addEventListener("click", (e) => {
   knopf.setAttribute("aria-pressed", String(zeigen));
   knopf.setAttribute("aria-label", zeigen ? "Passwort verbergen" : "Passwort anzeigen");
 });
+
+hEinrichten();
