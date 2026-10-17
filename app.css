@@ -3801,3 +3801,64 @@ a.kachel:active,
   }
 }
 .kanal-marke--ohne { --kfarbe: #9aa3b2; }
+
+/* ===================== Runde 10: Team, Löhne, Kennzahlen ===================== */
+
+.bewegung-icon--violett { --tone: var(--violett-text); --tone-wash: var(--violett-wash); }
+
+/* Wer arbeitet mit? Mehrfachauswahl wie die Auswahl-Chips */
+.team-chips { gap: 0.4rem; }
+.tk-team,
+.tk-dauer { display: grid; gap: 0.35rem; }
+.tk-dauer__box { display: flex; align-items: center; gap: 0.5rem; }
+.tk-dauer__box .eingabe { width: 6.5rem; font-variant-numeric: tabular-nums; }
+.tk-dauer__box span { color: var(--ink-3); font-weight: 650; }
+
+/* Aufteilung live: wer kriegt was, was bleibt in der Kasse */
+.tk-teilung,
+.lohn-vorschau {
+  justify-self: start;
+  max-width: 100%;
+  margin: 0;
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--pill);
+  background: var(--violett-wash);
+  color: var(--violett-text);
+  font-size: 0.9375rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.lohn-vorschau:empty { display: none; }
+
+/* Kennzahlen-Reihe (nur Computer) */
+.kennzahlen { display: grid; gap: 0.6rem; }
+.kennzahlen__titel {
+  margin: 0.4rem 0 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.raster--kennzahlen { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+  .raster--kennzahlen { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.raster--kennzahlen .kachel__info { overflow-wrap: anywhere; }
+
+/* Löhne im Popup */
+.lohn-liste { margin-top: 0.75rem; }
+
+/* Team in den Einstellungen */
+.team-anteil .eingabe-euro { max-width: 10rem; }
+.team-liste { margin-top: 0.75rem; }
+.team-liste .zeile { text-decoration: none; color: inherit; }
+.team-avatar { width: 40px; height: 40px; font-size: 0.875rem; }
+.zeile--archiviert { opacity: 0.55; }
+
+/* Personen-Seite */
+.person-kopf { display: flex; align-items: center; gap: 0.9rem; min-width: 0; }
+.person-kopf h1 { margin: 0; }
+.person-kopf__avatar { width: 56px; height: 56px; }
+.person-kacheln { margin-bottom: 1rem; }

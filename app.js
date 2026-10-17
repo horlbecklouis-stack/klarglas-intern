@@ -3,7 +3,7 @@
 /* ===================== Grundlagen ===================== */
 
 const CFG = window.KLARGLAS || {};
-const TABELLEN = ["kunden", "auftraege", "notizen", "ausgaben", "auszahlungen", "aufgaben", "verfuegbarkeit", "einstellungen", "kalender", "blocker"];
+const TABELLEN = ["kunden", "auftraege", "notizen", "ausgaben", "auszahlungen", "aufgaben", "verfuegbarkeit", "einstellungen", "kalender", "blocker", "mitarbeiter"];
 const STATUS = [
   { id: "neu", name: "Neue Anfrage", farbe: "#2B5CFF" },
   { id: "kontakt", name: "In Kontakt", farbe: "#5B3FD6" },
@@ -138,7 +138,7 @@ function lokaleDb() {
   }
   if (!speicher.einstellungen || speicher.einstellungen.length === 0) {
     speicher.einstellungen = [
-      { id: 1, slot_minuten: 60, slot_schritt: 30, vorlauf_stunden: 12, tage_voraus: 14, ...PREIS_STANDARD },
+      { id: 1, slot_minuten: 60, slot_schritt: 30, vorlauf_stunden: 12, tage_voraus: 14, anteil_prozent: 25, ...PREIS_STANDARD },
     ];
   }
   schreiben(speicher);
@@ -166,6 +166,8 @@ function lokaleDb() {
         ["auftraege", "notizen"].forEach((u) => (speicher[u] = tabelle(u).filter((x) => x.kunde_id !== id)));
         tabelle("aufgaben").forEach((a) => a.kunde_id === id && (a.kunde_id = null));
       }
+      // wie „on delete cascade“: Löhne eines gelöschten Auftrags fallen weg
+      if (t === "auftraege") speicher.auszahlungen = tabelle("auszahlungen").filter((x) => x.auftrag_id !== id);
       schreiben(speicher);
     },
     abonnieren(neuLaden) {
@@ -214,7 +216,8 @@ async function speichern(aktion, t, ...rest) {
   try {
     const ergebnis = await db[aktion](t, ...rest);
     await laden(t);
-    if (aktion === "remove" && t === "kunden") await Promise.all(["auftraege", "notizen", "aufgaben"].map(laden));
+    if (aktion === "remove" && t === "kunden") await Promise.all(["auftraege", "notizen", "aufgaben", "auszahlungen"].map(laden));
+    if (aktion === "remove" && t === "auftraege") await laden("auszahlungen");
     return ergebnis;
   } catch (fehler) {
     zeigeToast(`Speichern hat nicht geklappt: ${fehler.message}`);
@@ -323,10 +326,13 @@ function zahlenFuer(von, bis) {
   const bezahlt = bezahltImZeitraum(von, bis);
   const umsatz = bezahlt.reduce((s, a) => s + Number(a.bekommen), 0);
   const ausgaben = daten.ausgaben.filter((x) => imZeitraum(new Date(x.datum), von, bis)).reduce((s, x) => s + Number(x.betrag), 0);
-  const gewinn = umsatz - ausgaben;
+  const ids = new Set(bezahlt.map((a) => a.id));
+  const loehne = daten.auszahlungen.filter((x) => x.art === "lohn" && ids.has(x.auftrag_id)).reduce((s, x) => s + Number(x.betrag), 0);
+  const gewinn = umsatz - ausgaben - loehne;
   return {
     umsatz,
     ausgaben,
+    loehne,
     gewinn,
     marge: umsatz ? Math.round((gewinn / umsatz) * 100) : null,
     trinkgeld: bezahlt.reduce((s, a) => s + trinkgeld(a), 0),
@@ -361,7 +367,127 @@ function kanalVonKunde(k) {
 }
 
 // Auszahlungen, die als Anteil am Gewinn zählen (Erstattungen nicht)
-const istAnteil = (x) => x.art !== "erstattung" && !String(x.notiz || "").startsWith("Erstattung");
+const istAnteil = (x) => x.art !== "erstattung" && x.art !== "lohn" && !String(x.notiz || "").startsWith("Erstattung");
+
+/* ---------- Löhne pro Auftrag ---------- */
+
+const STANDARD_ANTEIL = 25;
+const standardAnteil = () => zahl(daten.einstellungen?.[0]?.anteil_prozent) ?? STANDARD_ANTEIL;
+const aktiveMitarbeiter = () => daten.mitarbeiter.filter((m) => m.aktiv !== false).sort((a, b) => a.name.localeCompare(b.name, "de"));
+// Ohne Angabe waren Louis und Lukas zusammen da (so wie früher: alles in die Kasse)
+const teamVon = (a) => (Array.isArray(a.team) && a.team.length ? a.team : [...PERSONEN]);
+const prozentVon = (a) => zahl(a.anteil_prozent) ?? standardAnteil();
+
+// Sind Louis und Lukas beide dabei, kriegen sie nichts; alle anderen (oder einer allein) kriegen ihren Anteil
+function lohnAufteilung({ bekommen, team, prozent }) {
+  const betrag = Number(bekommen) || 0;
+  const beideChefs = PERSONEN.every((p) => team.includes(p));
+  const empfaenger = team.filter((n) => !(beideChefs && PERSONEN.includes(n)));
+  const pro = Math.round(betrag * (Number(prozent) || 0)) / 100;
+  const loehne = empfaenger.map((name) => ({ name, betrag: pro }));
+  const summe = loehne.reduce((s, l) => s + l.betrag, 0);
+  return { loehne, kasse: Math.max(0, Math.round((betrag - summe) * 100) / 100), beideChefs, zuViel: empfaenger.length * prozent > 100 };
+}
+
+// Kurztext wie „Flo 25 € · Lukas 25 € · Kasse 50 €“
+function aufteilungText(teil, betrag) {
+  if (!teil.loehne.length) return teil.beideChefs ? `Ihr beide → alles in die Kasse${betrag ? ` (${euro(betrag)})` : ""}` : `Alles in die Kasse`;
+  const text = [...teil.loehne.map((l) => `${esc(l.name)} ${euro(l.betrag)}`), `Kasse ${euro(teil.kasse)}`].join(" · ");
+  return teil.zuViel ? `${text} · <span class="minus">über 100 %!</span>` : text;
+}
+
+// Löhne eines Auftrags neu buchen: alte weg, neue rein (nie doppelt)
+async function lohnBuchen(a) {
+  const alt = daten.auszahlungen.filter((x) => x.art === "lohn" && x.auftrag_id === a.id);
+  for (const x of alt) await db.remove("auszahlungen", x.id);
+  if (zahl(a.bekommen) !== null && !istTermin(a)) {
+    const { loehne } = lohnAufteilung({ bekommen: a.bekommen, team: teamVon(a), prozent: prozentVon(a) });
+    const kunde = kundeVon(a.kunde_id)?.name;
+    for (const l of loehne) {
+      if (!l.betrag) continue;
+      await db.insert("auszahlungen", {
+        an: l.name,
+        betrag: l.betrag,
+        art: "lohn",
+        auftrag_id: a.id,
+        datum: isoAusDatum(auftragDatum(a)),
+        notiz: `Lohn ${a.leistung || "Auftrag"}${kunde ? ` bei ${kunde}` : ""}`,
+      });
+    }
+  }
+  await laden("auszahlungen");
+}
+
+// Dauer eines Auftrags in Minuten: echt > Stunden > geplant > Termindauer. geschaetzt = nicht echt eingetragen
+function dauerVon(a) {
+  if (zahl(a.dauer_echt_min)) return { min: Number(a.dauer_echt_min), geschaetzt: false };
+  if (zahl(a.stunden)) return { min: Math.round(Number(a.stunden) * 60), geschaetzt: true };
+  if (zahl(a.dauer_min)) return { min: Number(a.dauer_min), geschaetzt: true };
+  return { min: Number(daten.einstellungen?.[0]?.slot_minuten) || 60, geschaetzt: true };
+}
+
+const stundenText = (min) => `${(Math.round((min / 60) * 10) / 10).toLocaleString("de-DE")} h`;
+
+// Durchschnitte für den Zeitraum: pro Auftrag, pro Stunde, pro Fenster, Löhne
+function kennzahlenFuer(von, bis) {
+  const bezahlt = bezahltImZeitraum(von, bis).filter((a) => !istTermin(a));
+  const umsatz = bezahlt.reduce((s, a) => s + Number(a.bekommen), 0);
+  let minuten = 0;
+  let geschaetzt = 0;
+  bezahlt.forEach((a) => {
+    const d = dauerVon(a);
+    minuten += d.min;
+    if (d.geschaetzt) geschaetzt++;
+  });
+  const fensterAuftraege = bezahlt.filter((a) => Number(a.fenster_normal || 0) + Number(a.fenster_boden || 0) > 0);
+  const fenster = fensterAuftraege.reduce((s, a) => s + Number(a.fenster_normal || 0) + Number(a.fenster_boden || 0), 0);
+  const umsatzFenster = fensterAuftraege.reduce((s, a) => s + Number(a.bekommen), 0);
+  const ids = new Set(bezahlt.map((a) => a.id));
+  const lohnZeilen = daten.auszahlungen.filter((x) => x.art === "lohn" && ids.has(x.auftrag_id));
+  const loehne = lohnZeilen.reduce((s, x) => s + Number(x.betrag), 0);
+  const proPerson = {};
+  lohnZeilen.forEach((x) => (proPerson[x.an] = (proPerson[x.an] || 0) + Number(x.betrag)));
+  const stunden = minuten / 60;
+  return {
+    auftraege: bezahlt.length,
+    umsatz,
+    stunden,
+    geschaetzt,
+    proAuftrag: bezahlt.length ? umsatz / bezahlt.length : null,
+    proStunde: stunden ? umsatz / stunden : null,
+    proFenster: fenster ? umsatzFenster / fenster : null,
+    fensterProAuftrag: fensterAuftraege.length ? fenster / fensterAuftraege.length : null,
+    loehne,
+    proPerson,
+    kasseProStunde: stunden ? (umsatz - loehne) / stunden : null,
+  };
+}
+
+const euroOder = (w) => (w === null || w === undefined ? "–" : euro(Math.round(w * 100) / 100));
+
+// Einsätze einer Person: bezahlte Aufträge, bei denen sie im Team war (Louis/Lukas ohne Team = dabei)
+function einsaetzeVon(name, von = null, bis = null) {
+  return daten.auftraege
+    .filter((a) => !istTermin(a) && zahl(a.bekommen) !== null && teamVon(a).includes(name))
+    .filter((a) => !von || imZeitraum(auftragDatum(a), von, bis))
+    .sort((a, b) => auftragDatum(b) - auftragDatum(a));
+}
+const lohnFuer = (name, a) =>
+  daten.auszahlungen.filter((x) => x.art === "lohn" && x.auftrag_id === a.id && x.an === name).reduce((s, x) => s + Number(x.betrag), 0);
+
+function personZahlen(name, von = null, bis = null) {
+  const einsaetze = einsaetzeVon(name, von, bis);
+  const lohn = einsaetze.reduce((s, a) => s + lohnFuer(name, a), 0);
+  const minuten = einsaetze.reduce((s, a) => s + dauerVon(a).min, 0);
+  return {
+    einsaetze,
+    lohn,
+    minuten,
+    umsatz: einsaetze.reduce((s, a) => s + Number(a.bekommen), 0),
+    proStunde: minuten ? lohn / (minuten / 60) : null,
+    proAuftrag: einsaetze.length ? lohn / einsaetze.length : null,
+  };
+}
 
 // 50/50: Der Gewinn wird immer geteilt, egal wer gearbeitet hat.
 // verteilbar = Kasse - offene Erstattungen + schon ausgezahlte Anteile; Anteil = verteilbar / 2
@@ -526,7 +652,7 @@ function eintragenZeile(a) {
   return `<form class="eintragen" data-eintragen="${esc(a.id)}">
     <span class="zeile__haupt">
       <button class="zeile__titel zeile__titel--knopf" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}">${kanalMarke(a.kanal)}${esc(k?.name || "Unbekannt")}</button>
-      <span class="zeile__unter">${esc(fmtTag.format(new Date(a.datum)))} · ${esc(a.leistung)}${zahl(a.geschaetzt) !== null ? ` · geschätzt ${euro(a.geschaetzt)}` : ""}</span>
+      <span class="zeile__unter">${esc(fmtTag.format(new Date(a.datum)))} · ${esc(a.leistung)}${zahl(a.geschaetzt) !== null ? ` · geschätzt ${euro(a.geschaetzt)}` : ""}${a.team?.length ? ` · ${esc(a.team.join(", "))}` : ""}</span>
     </span>
     <label class="betrag">
       <span class="leise">Bekommen</span>
@@ -664,10 +790,11 @@ function bewegungenListe(seitDatum = null) {
       unter: `${x.notiz ? `${x.notiz} · ` : ""}${x.bezahlt_von === "Kasse" ? "aus der Kasse" : `ausgelegt von ${x.bezahlt_von}${x.erstattet ? ", erstattet" : ""}`}`,
       aktion: "ausgabe-bearbeiten", id: x.id,
     })),
-    ...daten.auszahlungen.filter((x) => !seitDatum || new Date(x.datum) >= seitDatum).map((x) => ({
-      art: "auszahlung", datum: new Date(x.datum), betrag: -Number(x.betrag), titel: `Auszahlung an ${x.an}`,
-      unter: x.notiz || "", aktion: "auszahlung-bearbeiten", id: x.id,
-    })),
+    ...daten.auszahlungen.filter((x) => !seitDatum || new Date(x.datum) >= seitDatum).map((x) =>
+      x.art === "lohn"
+        ? { art: "lohn", datum: new Date(x.datum), betrag: -Number(x.betrag), titel: `Lohn an ${x.an}`, unter: x.notiz || "", link: `#mitarbeiter/${encodeURIComponent(x.an)}` }
+        : { art: "auszahlung", datum: new Date(x.datum), betrag: -Number(x.betrag), titel: `Auszahlung an ${x.an}`, unter: x.notiz || "", aktion: "auszahlung-bearbeiten", id: x.id }
+    ),
   ].sort((a, b) => b.datum - a.datum);
 
   return bewegungen;
@@ -1178,6 +1305,26 @@ function diagrammFuer(zeige, zeitraum, stichtag) {
   if (zeige === "auftraege") {
     return { titel: betitel("Aufträge"), wert: String(m.auftraege), diagramm: linie(reihe((von, bis) => ({ wert: bezahltImZeitraum(von, bis).length })), { format: (w) => String(w) }) };
   }
+  if (zeige.startsWith("kz-")) {
+    const k = kennzahlenFuer(g.von, g.bis);
+    const kz = (fn) => reihe((von, bis) => ({ wert: Math.round((fn(kennzahlenFuer(von, bis)) || 0) * 100) / 100 }));
+    if (zeige === "kz-auftrag") return { titel: betitel("Ø pro Auftrag"), wert: euroOder(k.proAuftrag), diagramm: linie(kz((x) => x.proAuftrag), { format: euro }) };
+    if (zeige === "kz-stunde") return { titel: betitel("Ø pro Stunde"), wert: euroOder(k.proStunde), diagramm: linie(kz((x) => x.proStunde), { format: euro }) + `<p class="hinweis">${k.auftraege ? `${stundenText(k.stunden * 60)} gearbeitet · ${k.geschaetzt} von ${k.auftraege} Dauern geschätzt (keine echte Dauer eingetragen)` : ""}</p>` };
+    if (zeige === "kz-fenster") return { titel: betitel("Ø pro Fenster"), wert: euroOder(k.proFenster), diagramm: linie(kz((x) => x.proFenster), { format: euro }) };
+    if (zeige === "kz-kasse") return { titel: betitel("Kasse pro Stunde"), wert: euroOder(k.kasseProStunde), diagramm: linie(kz((x) => x.kasseProStunde), { format: euro }) };
+    // Löhne: Balken pro Person und Zeitabschnitt, darunter die Namen zum Anklicken
+    const namen = [...new Set(daten.auszahlungen.filter((x) => x.art === "lohn").map((x) => x.an))].sort((a, b) => a.localeCompare(b, "de"));
+    const FARBEN = ["#5B3FD6", "#2B5CFF", "#D08A00", "#1E9E5A", "#E67C73", "#0F7A4B"];
+    const gruppen = punkte.map((pk) => ({ label: pk.label, werte: kennzahlenFuer(pk.von, pk.bis).proPerson }));
+    const liste = namen.length
+      ? `<ul class="liste lohn-liste">${namen.map((n) => `<li><a class="zeile" href="#mitarbeiter/${encodeURIComponent(n)}" data-diagramm-zu><span class="zeile__haupt"><span class="zeile__titel">${esc(n)}</span></span><span class="zeile__rechts">${euro(k.proPerson[n] || 0)}</span></a></li>`).join("")}</ul>`
+      : `<p class="leer">Noch keine Löhne.</p>`;
+    return {
+      titel: betitel("Löhne"),
+      wert: euro(k.loehne),
+      diagramm: (namen.length ? balken(gruppen, namen.map((n, i) => ({ id: n, name: n, farbe: FARBEN[i % FARBEN.length] }))) : "") + liste,
+    };
+  }
   if (zeige === "ausgaben") {
     return { titel: betitel("Ausgaben"), wert: euro(m.ausgaben), diagramm: linie(feld("ausgaben"), { format: euro }) };
   }
@@ -1227,6 +1374,46 @@ function aufteilungKarte() {
   </section>`;
 }
 
+// Woche / Monat / Jahr mit Pfeilen (Geld-Seite und Personen-Seite)
+function zeitraumWahl(g) {
+  const z = zustand;
+  const schritt = { woche: ["Vorwoche", "Nächste Woche"], monat: ["Vormonat", "Nächster Monat"], jahr: ["Vorjahr", "Nächstes Jahr"] }[aktuellerZeitraum()];
+  const zeitraumNamen = { woche: "Woche", monat: "Monat", jahr: "Jahr" };
+  return `<div class="zeitraum">
+      <div class="segment" role="group" aria-label="Zeitraum wählen">
+        <span class="segment__pille" aria-hidden="true" data-ziel="${ZEITRAUM_POS[z.geldZeitraum]}" style="--i:${z.geldPillePrev ?? ZEITRAUM_POS[z.geldZeitraum]}"></span>
+        ${Object.keys(ZEITRAUM_POS).map((w) => `<button class="segment__knopf" type="button" aria-pressed="${z.geldZeitraum === w}" data-aktion="zeitraum" data-wert="${w}">${zeitraumNamen[w]}</button>`).join("")}
+      </div>
+      <div class="zeitraum__nav">
+        <button class="knopf knopf--klein knopf--leise" type="button" data-aktion="schritt" data-wert="-1" aria-label="${schritt[0]}">‹</button>
+        <h2 class="zeitraum__titel">${esc(g.label)}</h2>
+        <button class="knopf knopf--klein knopf--leise" type="button" data-aktion="schritt" data-wert="1" aria-label="${schritt[1]}">›</button>
+      </div>
+    </div>`;
+}
+
+// Nur am Computer: Durchschnitte, folgen dem Zeitraum oben
+function kennzahlenReihe(g) {
+  const k = kennzahlenFuer(g.von, g.bis);
+  const kacheln = [
+    ["kz-auftrag", "Ø pro Auftrag", euroOder(k.proAuftrag), `${k.auftraege} bezahlt`, "blau"],
+    ["kz-stunde", "Ø pro Stunde", euroOder(k.proStunde), k.auftraege ? `${stundenText(k.stunden * 60)}${k.geschaetzt ? ` · ${k.geschaetzt} von ${k.auftraege} geschätzt` : ""}` : "", "gruen"],
+    ["kz-fenster", "Ø pro Fenster", euroOder(k.proFenster), k.fensterProAuftrag ? `Ø ${Math.round(k.fensterProAuftrag * 10) / 10} Fenster pro Auftrag`.replace(".", ",") : "", "himmel"],
+    ["kz-loehne", "Löhne", euro(k.loehne), Object.keys(k.proPerson).length ? Object.entries(k.proPerson).map(([n, b]) => `${esc(n)} ${euro(b)}`).join(" · ") : "an Mitarbeiter", "violett"],
+    ["kz-kasse", "Kasse pro Stunde", euroOder(k.kasseProStunde), "nach den Löhnen", "bernstein"],
+  ];
+  return `<section class="kennzahlen" aria-labelledby="t-kennzahlen">
+    <h2 class="kennzahlen__titel" id="t-kennzahlen">Kennzahlen</h2>
+    <div class="raster raster--kacheln raster--kennzahlen">
+      ${kacheln.map(([id, titel, wert, info, farbe]) => `<button class="kachel kachel--tab kachel--${farbe}" type="button" data-aktion="geld-tab" data-wert="${id}">
+        <span class="kachel__titel">${titel}</span>
+        <span class="kachel__wert">${wert}</span>
+        ${info ? `<span class="kachel__info">${info}</span>` : ""}
+      </button>`).join("")}
+    </div>
+  </section>`;
+}
+
 function ansichtGeld() {
   const z = zustand;
   const handy = istHandy();
@@ -1252,6 +1439,7 @@ function ansichtGeld() {
     rein: { farbe: "gruen", pfad: '<path d="M12 4v15m0 0-5-5m5 5 5-5"/>' },
     aus: { farbe: "rot", pfad: '<path d="M12 20V5m0 0-5 5m5-5 5 5"/>' },
     auszahlung: { farbe: "blau", pfad: '<path d="M4 12h15m0 0-5-5m5 5-5 5"/>' },
+    lohn: { farbe: "violett", pfad: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.6-3.6 3.5-6 7-6s6.4 2.4 7 6"/>' },
   };
 
   const bewegungZeile = (b) => {
@@ -1275,9 +1463,6 @@ function ansichtGeld() {
     ["kasse", "Kassenstand", euro(kassenstand()), "jetzt", "navy"],
   ];
   const tabs = handy ? ["kasse", "umsatz", "gewinn", "ausgaben", "trinkgeld", "auftraege"].map((id) => alleTabs.find((t) => t[0] === id)) : alleTabs;
-  const schritt = { woche: ["Vorwoche", "Nächste Woche"], monat: ["Vormonat", "Nächster Monat"], jahr: ["Vorjahr", "Nächstes Jahr"] }[aktuellerZeitraum()];
-  const zeitraumNamen = { woche: "Woche", monat: "Monat", jahr: "Jahr" };
-
   return `
     <div class="kopfzeile">
       <div><h1>Geld</h1><p class="leise">Alles bar, alles in einer Kasse</p></div>
@@ -1287,17 +1472,7 @@ function ansichtGeld() {
       </div>
     </div>
 
-    <div class="zeitraum">
-      <div class="segment" role="group" aria-label="Zeitraum wählen">
-        <span class="segment__pille" aria-hidden="true" data-ziel="${ZEITRAUM_POS[z.geldZeitraum]}" style="--i:${z.geldPillePrev ?? ZEITRAUM_POS[z.geldZeitraum]}"></span>
-        ${Object.keys(ZEITRAUM_POS).map((w) => `<button class="segment__knopf" type="button" aria-pressed="${z.geldZeitraum === w}" data-aktion="zeitraum" data-wert="${w}">${zeitraumNamen[w]}</button>`).join("")}
-      </div>
-      <div class="zeitraum__nav">
-        <button class="knopf knopf--klein knopf--leise" type="button" data-aktion="schritt" data-wert="-1" aria-label="${schritt[0]}">‹</button>
-        <h2 class="zeitraum__titel">${esc(g.label)}</h2>
-        <button class="knopf knopf--klein knopf--leise" type="button" data-aktion="schritt" data-wert="1" aria-label="${schritt[1]}">›</button>
-      </div>
-    </div>
+    ${zeitraumWahl(g)}
 
     <div class="${handy ? "raster raster--geld-handy" : "raster raster--kacheln raster--tabs"}" role="group" aria-label="Kennzahl für das Diagramm wählen">
       ${tabs.map(([id, titel, wert, info, farbe]) => `<button class="kachel kachel--tab kachel--${farbe}${handy && id === "kasse" ? " kachel--gross" : ""}" type="button" data-aktion="geld-tab" data-wert="${id}">
@@ -1306,6 +1481,8 @@ function ansichtGeld() {
         ${info ? `<span class="kachel__info">${info}</span>` : ""}
       </button>`).join("")}
     </div>
+
+    ${handy ? "" : kennzahlenReihe(g)}
 
     <div class="raster raster--zwei" ${handy ? "hidden" : ""}>
       <div class="geld-links">
@@ -1356,6 +1533,97 @@ function ansichtAufgaben() {
 }
 
 // Einstellungen (nur am Computer verlinkt): Preise und Stundenlohn
+// Einstellungen: Anteil pro Kopf + Mitarbeiter
+function teamKarte() {
+  const alle = [...daten.mitarbeiter].sort((a, b) => (a.aktiv === false) - (b.aktiv === false) || a.name.localeCompare(b.name, "de"));
+  const zeile = (name, unter, archiviert = false) => {
+    const z = personZahlen(name);
+    return `<li><a class="zeile${archiviert ? " zeile--archiviert" : ""}" href="#mitarbeiter/${encodeURIComponent(name)}">
+      <span class="tk-avatar team-avatar" aria-hidden="true">${esc(tkInitialen(name))}</span>
+      <span class="zeile__haupt"><span class="zeile__titel">${esc(name)}</span><span class="zeile__unter">${unter} · ${z.einsaetze.length} ${z.einsaetze.length === 1 ? "Einsatz" : "Einsätze"}</span></span>
+      <span class="zeile__rechts">${euro(z.lohn)}</span>
+    </a></li>`;
+  };
+  return `<section class="karte" aria-labelledby="t-team">
+    <div class="karte__kopf">${kartenTitel("t-team", "gruen", "kunden", "Team")}<button class="knopf knopf--klein knopf--voll" type="button" data-aktion="mitarbeiter-neu">Mitarbeiter hinzufügen</button></div>
+    <label class="feld team-anteil"><span>Anteil pro Kopf</span>
+      <span class="eingabe-euro"><input type="number" class="eingabe" inputmode="decimal" min="0" max="100" step="1" value="${esc(standardAnteil())}" data-einstell="true" data-einstell-field="anteil_prozent" /><span aria-hidden="true">%</span></span>
+      <small class="leise">Jeder, der mitarbeitet, nimmt so viel vom Betrag bar mit. Seid ihr beide dabei, geht alles in die Kasse. Im Auftrag lässt es sich ändern.</small>
+    </label>
+    <ul class="liste team-liste">
+      ${PERSONEN.map((n) => zeile(n, "Chef")).join("")}
+      ${alle.map((m) => zeile(m.name, m.aktiv === false ? "archiviert" : "Mitarbeiter", m.aktiv === false)).join("")}
+    </ul>
+  </section>`;
+}
+
+// Seite pro Person: was sie verdient hat, wie lange, bei wem
+function ansichtMitarbeiter(roh) {
+  const name = decodeURIComponent(roh || "");
+  const m = daten.mitarbeiter.find((x) => x.name === name);
+  const chef = PERSONEN.includes(name);
+  if (!m && !chef && !daten.auszahlungen.some((x) => x.an === name)) {
+    return `<a class="zurueck" href="#einstellungen">← Einstellungen</a><p class="leer">Diese Person gibt es nicht (mehr).</p>`;
+  }
+  const z = zustand;
+  const zeitraum = aktuellerZeitraum();
+  const g = zeitraumGrenzen(zeitraum, z.geldStichtag);
+  const jetzt = personZahlen(name, g.von, g.bis);
+  const gesamt = personZahlen(name);
+  const reihe = gesamt.einsaetze;
+  const erster = reihe[reihe.length - 1];
+  const letzter = reihe[0];
+  const { untertitel, punkte } = zeitreihe(zeitraum, z.geldStichtag);
+  const gruppen = punkte.map((p) => ({ label: p.label, werte: { lohn: personZahlen(name, p.von, p.bis).lohn } }));
+  const zeitraumNamen = { woche: "Woche", monat: "Monat", jahr: "Jahr" };
+
+  const einsatzZeile = (a) => {
+    const d = dauerVon(a);
+    return `<li><button class="zeile zeile--knopf" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}">
+      ${datumMarke(a.datum || a.erstellt)}
+      <span class="zeile__haupt"><span class="zeile__titel">${esc(auftragName(a))}</span>
+        <span class="zeile__unter">${esc(a.leistung || "")} · ${d.geschaetzt ? "ca. " : ""}${stundenText(d.min)} · mit ${esc(teamVon(a).filter((n) => n !== name).join(", ") || "niemandem")}</span></span>
+      <span class="zeile__rechts">${euro(lohnFuer(name, a))}<small class="leise"> von ${euro(a.bekommen)}</small></span>
+    </button></li>`;
+  };
+
+  return `
+    <a class="zurueck" href="#einstellungen">← Team</a>
+    <div class="kopfzeile">
+      <div class="person-kopf">
+        <span class="tk-avatar person-kopf__avatar" aria-hidden="true">${esc(tkInitialen(name))}</span>
+        <div><h1>${esc(name)}</h1><p class="leise">${chef ? "Chef – hier zählt nur der Lohn aus Aufträgen ohne den anderen, nicht der 50/50-Anteil" : m?.aktiv === false ? "Archiviert" : "Mitarbeiter"}</p></div>
+      </div>
+      ${m ? `<div class="knopfreihe">
+        <button class="knopf" type="button" data-aktion="mitarbeiter-umbenennen" data-id="${esc(m.id)}">Umbenennen</button>
+        <button class="knopf" type="button" data-aktion="mitarbeiter-archivieren" data-id="${esc(m.id)}">${m.aktiv === false ? "Zurückholen" : "Archivieren"}</button>
+      </div>` : ""}
+    </div>
+
+    ${zeitraumWahl(g)}
+
+    <div class="raster raster--kacheln person-kacheln">
+      ${kachel("Insgesamt bekommen", euro(gesamt.lohn), `seit Start · ${esc(g.label)}: ${euro(jetzt.lohn)}`, true, null, "kasse")}
+      ${kachel("Ø pro Stunde", euroOder(gesamt.proStunde), jetzt.proStunde !== null ? `${esc(zeitraumNamen[zeitraum])}: ${euroOder(jetzt.proStunde)}` : "", false, null, "gruen")}
+      ${kachel("Stunden", stundenText(gesamt.minuten), `${esc(zeitraumNamen[zeitraum])}: ${stundenText(jetzt.minuten)}`, false, null, "blau")}
+      ${kachel("Aufträge", String(reihe.length), `${esc(zeitraumNamen[zeitraum])}: ${jetzt.einsaetze.length}`, false, null, "himmel")}
+      ${kachel("Ø pro Auftrag", euroOder(gesamt.proAuftrag), "Lohn pro Einsatz", false, null, "violett")}
+      ${kachel("Umsatz mit " + esc(name), euro(gesamt.umsatz), "so viel kam bei seinen Einsätzen rein", false, null, "bernstein")}
+      ${kachel("Erster Einsatz", erster ? esc(fmtDatum.format(auftragDatum(erster))) : "–", letzter ? `zuletzt ${esc(fmtDatum.format(auftragDatum(letzter)))}` : "", false, null, "navy")}
+    </div>
+
+    <div class="raster raster--zwei">
+      <section class="karte" aria-labelledby="t-person-lohn">
+        ${kartenTitel("t-person-lohn", "violett", "zahl", `Lohn · ${esc(untertitel)}`)}
+        ${reihe.length ? balken(gruppen, [{ id: "lohn", name: "Lohn", farbe: "#5B3FD6" }]) : `<p class="leer">Noch keine Einsätze.</p>`}
+      </section>
+      <section class="karte" aria-labelledby="t-person-einsaetze">
+        ${kartenTitel("t-person-einsaetze", "blau", "termin", "Einsätze")}
+        ${reihe.length ? `<ul class="liste">${reihe.map(einsatzZeile).join("")}</ul>` : `<p class="leer">Noch keine bezahlten Einsätze.</p>`}
+      </section>
+    </div>`;
+}
+
 function ansichtEinstellungen() {
   const p = preise();
   const feld = (name, titel, schritt, hinweis = "") => `<label class="feld"><span>${titel}</span>
@@ -1377,6 +1645,7 @@ function ansichtEinstellungen() {
         ${feld("stundensatz", "Stundenlohn", "0.5", "Vorschlag für neue Aufträge. Im Auftrag selbst kannst du ihn ändern oder auf Festpreis umstellen.")}
       </section>
     </div>
+    ${teamKarte()}
     <section class="karte">
       <div class="karte__kopf">${kartenTitel("t-push", "violett", "anfrage", "Mitteilungen bei neuen Anfragen")}<button class="knopf knopf--klein${pushAn ? " knopf--leise" : " knopf--voll"}" type="button" data-aktion="push-umschalten">${pushAn ? "Ausschalten" : "Einschalten"}</button></div>
       <p class="leise" style="margin:0">${esc(pushText())} Gilt nur für dieses Gerät – am Handy und am Mac je einmal einschalten.</p>
@@ -1586,7 +1855,7 @@ function render() {
   const fokusId = aktiv && aktiv.id;
   const cursor = fokusId && "selectionStart" in aktiv ? aktiv.selectionStart : null;
 
-  const ansichten = { uebersicht: ansichtUebersicht, kunden: ansichtKunden, kunde: () => ansichtKunde(id), kalender: ansichtKalender, geld: ansichtGeld, aufgaben: ansichtAufgaben, zeiten: ansichtZeiten, einstellungen: ansichtEinstellungen };
+  const ansichten = { uebersicht: ansichtUebersicht, kunden: ansichtKunden, kunde: () => ansichtKunde(id), kalender: ansichtKalender, geld: ansichtGeld, aufgaben: ansichtAufgaben, zeiten: ansichtZeiten, einstellungen: ansichtEinstellungen, mitarbeiter: () => ansichtMitarbeiter(id) };
   inhalt.innerHTML = (ansichten[bereich] || ansichtUebersicht)();
   // Die Pille im Zeitraum-Schalter gleitet von der alten Stufe zur neuen
   const pille = $(".segment__pille", inhalt);
@@ -1596,7 +1865,7 @@ function render() {
   }
   zustand.geldPillePrev = null;
 
-  const navZiel = bereich === "kunde" ? "kunden" : bereich;
+  const navZiel = bereich === "kunde" ? "kunden" : bereich === "mitarbeiter" ? "einstellungen" : bereich;
   document.querySelectorAll("[data-nav] a").forEach((a) => {
     if (a.dataset.ziel === navZiel) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -1605,7 +1874,7 @@ function render() {
   if (bereich === "zeiten") zeitenLink.setAttribute("aria-current", "page");
   else zeitenLink.removeAttribute("aria-current");
   const einstLink = $(".kopf__einst");
-  if (bereich === "einstellungen") einstLink.setAttribute("aria-current", "page");
+  if (bereich === "einstellungen" || bereich === "mitarbeiter") einstLink.setAttribute("aria-current", "page");
   else einstLink.removeAttribute("aria-current");
 
   if (fokusId) {
@@ -1806,6 +2075,15 @@ function dialogAuftrag(a = {}, kundeId = null) {
         <label class="feld"><span>Wirklich bekommen (€)</span><input name="bekommen" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(a.bekommen ?? "")}" placeholder="nach dem Termin" /></label>
       </div>
       <p class="hinweis" data-schaetz-hinweis></p>
+      <fieldset class="feld">
+        <legend>Wer arbeitet mit?</legend>
+        ${teamChips(teamVon(a))}
+      </fieldset>
+      <div class="feldreihe">
+        <label class="feld"><span>Anteil pro Kopf (%)</span><input name="anteil_prozent" type="number" inputmode="decimal" min="0" max="100" step="1" value="${esc(a.anteil_prozent ?? "")}" placeholder="${esc(standardAnteil())} (Standard)" /></label>
+        <label class="feld"><span>Wirklich gebraucht (Std.)</span><input name="dauer_echt" type="text" inputmode="decimal" value="${esc(stundenFeld(zahl(a.dauer_echt_min)))}" placeholder="nach dem Termin" /></label>
+      </div>
+      <p class="hinweis lohn-vorschau" data-lohn-vorschau></p>
       ${vorlaeufigSchalter(a)}
       ${kanalWahl(kanalVorbelegt)}
       <label class="feld"><span>Notizen zum Auftrag</span><textarea name="notiz" rows="3" placeholder="Zum Beispiel: Hund im Garten, Leiter mitbringen, Schlüssel beim Nachbarn">${esc(a.notiz)}</textarea></label>
@@ -1827,13 +2105,18 @@ function dialogAuftrag(a = {}, kundeId = null) {
           ? "Festpreis: Betrag oben direkt eintragen."
           : s === null ? "" : `Rechnung: ${fensterArt ? `${werte.fenster_normal || 0} × ${euro(p.preis_normal)} + ${werte.fenster_boden || 0} × ${euro(p.preis_boden)}, mindestens ${euro(p.mindestpreis)}` : `${Number(werte.stunden).toLocaleString("de-DE")} h × ${euro(satz)}`} = ${euro(s)}`;
         if (!vonHand && s !== null) feld.value = s;
+        const betrag = zahl(werte.bekommen) ?? zahl(feld.value);
+        const teil = lohnAufteilung({ bekommen: betrag, team: teamAusForm(form), prozent: zahl(werte.anteil_prozent) ?? standardAnteil() });
+        $("[data-lohn-vorschau]", form).innerHTML = `${zahl(werte.bekommen) === null ? "Bei " + euro(betrag || 0) + ": " : ""}${aufteilungText(teil, betrag)}`;
       };
       feld.addEventListener("input", () => (vonHand = true));
       form.addEventListener("input", (e) => e.target !== feld && aktualisieren());
       aktualisieren();
     },
-    absenden: async (f) => {
+    absenden: async (f, form) => {
       if (!f.kanal) throw new Error("Bitte wähle, wie der Kunde auf uns zukam.");
+      const team = teamAusForm(form);
+      if (!team.length) throw new Error("Bitte ankreuzen, wer mitarbeitet.");
       const fensterArt = f.leistung === "Fensterreinigung";
       const zeile = {
         kunde_id: f.kunde_id,
@@ -1850,6 +2133,9 @@ function dialogAuftrag(a = {}, kundeId = null) {
         kanal: f.kanal,
         vorlaeufig: Boolean(f.vorlaeufig) && Boolean(f.datum),
         notiz: (f.notiz || "").trim() || null,
+        team,
+        anteil_prozent: zahl(f.anteil_prozent),
+        dauer_echt_min: minutenAus(f.dauer_echt),
       };
       let gespeichert;
       if (a.id) {
@@ -1861,7 +2147,9 @@ function dialogAuftrag(a = {}, kundeId = null) {
         if (zeile.bekommen !== null) await nachBezahlung(zeile.kunde_id, zeile);
         else await statusNachTermin(zeile.kunde_id, zeile);
       }
-      kalenderAbgleichen(gespeichert?.id || a.id);
+      const id = gespeichert?.id || a.id;
+      await lohnBuchen({ ...zeile, id });
+      kalenderAbgleichen(id);
     },
     entfernen: a.id ? () => auftragLoeschen(a) : null,
   });
@@ -1903,6 +2191,33 @@ async function kalenderAbgleichen(id, aktion = "abgleichen") {
 async function auftragLoeschen(a) {
   if (a.google_event_id) await kalenderAbgleichen(a.id, "austragen");
   await loeschen("auftraege", a.id);
+}
+
+// Mitarbeiter anlegen oder umbenennen; beim Umbenennen ziehen Aufträge und Löhne mit
+function dialogMitarbeiter(m = {}) {
+  oeffneDialog({
+    titel: m.id ? `${m.name} umbenennen` : "Mitarbeiter hinzufügen",
+    felder: `<label class="feld"><span>Name</span><input name="name" required autocomplete="off" value="${esc(m.name || "")}" placeholder="z. B. Flo" /></label>
+      ${m.id ? "" : `<p class="hinweis">Taucht dann bei „Wer arbeitet mit?“ auf. Anteil: ${esc(standardAnteil())} % pro Auftrag.</p>`}`,
+    absenden: async (f) => {
+      const name = (f.name || "").trim();
+      if (!name) throw new Error("Bitte einen Namen eingeben.");
+      if ([...PERSONEN, "Beide", "Kasse"].includes(name) || daten.mitarbeiter.some((x) => x.name === name && x.id !== m.id)) throw new Error(`„${name}“ gibt es schon.`);
+      if (!m.id) {
+        await neu("mitarbeiter", { name, aktiv: true });
+        zeigeToast(`${name} ist im Team`);
+        return;
+      }
+      if (name === m.name) return;
+      await aendern("mitarbeiter", m.id, { name });
+      for (const a of daten.auftraege.filter((x) => x.team?.includes(m.name))) {
+        await db.update("auftraege", a.id, { team: a.team.map((n) => (n === m.name ? name : n)) });
+      }
+      for (const x of daten.auszahlungen.filter((y) => y.an === m.name)) await db.update("auszahlungen", x.id, { an: name });
+      await Promise.all(["auftraege", "auszahlungen"].map(laden));
+      if (route().bereich === "mitarbeiter") history.replaceState(null, "", `#mitarbeiter/${encodeURIComponent(name)}`);
+    },
+  });
 }
 
 // Termin ohne Geld: Besichtigung, Rückruf … Kunde ist freiwillig
@@ -2056,6 +2371,23 @@ const betragLesen = (text) => {
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
+};
+
+// Wer arbeitet mit? Chips zum Ankreuzen: Louis, Lukas, aktive Mitarbeiter (+ alte Namen aus dem Auftrag)
+function teamChips(team) {
+  const namen = [...PERSONEN, ...aktiveMitarbeiter().map((m) => m.name)];
+  team.forEach((n) => !namen.includes(n) && namen.push(n));
+  return `<div class="chips chips--wahl team-chips">${namen
+    .map((n) => `<label class="chip chip--wahl"><input type="checkbox" name="team" value="${esc(n)}"${team.includes(n) ? " checked" : ""} />${esc(n)}</label>`)
+    .join("")}</div>`;
+}
+const teamAusForm = (form) => [...form.querySelectorAll('input[name="team"]:checked')].map((x) => x.value);
+
+// Stunden als Text („1,5“) ↔ Minuten
+const stundenFeld = (min) => (min ? String(Math.round((min / 60) * 100) / 100).replace(".", ",") : "");
+const minutenAus = (text) => {
+  const h = betragLesen(text);
+  return h ? Math.round(h * 60) : null;
 };
 
 // Trinkgeld-Hinweis unter dem Betragsfeld, live beim Tippen
@@ -2232,6 +2564,7 @@ function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
         <div class="tk-geld__text">
           <p class="tk-geld__titel" id="tk-geld-titel">Bezahlt: ${euro(a.bekommen)}</p>
           <p class="tk-geld__werte">${geschaetzt !== null ? `Geschätzt ${euro(geschaetzt)}` : "Kein Schätzwert"}${tg ? ` · <strong>+${euro(tg)} Trinkgeld</strong>` : ""}</p>
+          <p class="tk-geld__werte">${aufteilungText(lohnAufteilung({ bekommen: a.bekommen, team: teamVon(a), prozent: prozentVon(a) }), a.bekommen)}${zahl(a.dauer_echt_min) ? ` · ${stundenText(a.dauer_echt_min)}` : ""}</p>
           ${erfolg ? `<p class="tk-geld__ok" role="status">${euro(a.bekommen)} eingetragen</p>` : ""}
         </div>
       </div>
@@ -2259,6 +2592,15 @@ function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
           </label>
         </div>
         <p class="tk-tg" data-tk-tg>${tgTextFuer(betragLesen(text), geschaetzt)}</p>
+        <div class="tk-team">
+          <span class="tk-vergleich__label">Wer war dabei?</span>
+          ${teamChips(teamVon(a))}
+        </div>
+        <label class="tk-dauer">
+          <span class="tk-vergleich__label">Wie lange gebraucht?</span>
+          <span class="tk-dauer__box"><input class="eingabe" name="dauer" type="text" inputmode="decimal" autocomplete="off" value="${esc(stundenFeld(dauerVon(a).min))}" aria-label="Dauer in Stunden" data-tk-dauer /><span>Std.</span></span>
+        </label>
+        <p class="tk-teilung" data-tk-teilung>${aufteilungText(lohnAufteilung({ bekommen: betragLesen(text), team: teamVon(a), prozent: prozentVon(a) }), betragLesen(text))}</p>
         <p class="meldung minus" data-tk-fehler role="alert"></p>
         <div class="tk-aktionen">
           ${bearbeiten ? `<button class="knopf knopf--leise" type="button" data-tk-abbrechen>Abbrechen</button>` : ""}
@@ -2317,10 +2659,13 @@ terminkarte.addEventListener("click", (e) => {
 });
 
 terminkarte.addEventListener("input", (e) => {
-  if (!e.target.matches("[data-tk-betrag]")) return;
+  const form = e.target.closest("[data-tk-form]");
+  if (!form) return;
   const a = daten.auftraege.find((x) => x.id === terminkarteId);
-  $("[data-tk-tg]", terminkarte).innerHTML = tgTextFuer(betragLesen(e.target.value), zahl(a?.geschaetzt));
-  $("[data-tk-fehler]", terminkarte).textContent = "";
+  const betrag = betragLesen($("[data-tk-betrag]", form).value);
+  $("[data-tk-tg]", form).innerHTML = tgTextFuer(betrag, zahl(a?.geschaetzt));
+  $("[data-tk-teilung]", form).innerHTML = aufteilungText(lohnAufteilung({ bekommen: betrag, team: teamAusForm(form), prozent: prozentVon(a || {}) }), betrag);
+  $("[data-tk-fehler]", form).textContent = "";
 });
 
 terminkarte.addEventListener("submit", async (e) => {
@@ -2339,7 +2684,10 @@ terminkarte.addEventListener("submit", async (e) => {
   knopf.disabled = true;
   try {
     const warSchonBezahlt = zahl(a.bekommen) !== null;
-    await aendern("auftraege", a.id, { bekommen: betrag });
+    const team = teamAusForm(form);
+    const dauer = minutenAus($("[data-tk-dauer]", form)?.value);
+    await aendern("auftraege", a.id, { bekommen: betrag, team, dauer_echt_min: dauer });
+    await lohnBuchen({ ...a, bekommen: betrag, team });
     // Verlauf und Stammkunden-Status nur beim ersten Eintrag, bei einer Korrektur nicht noch einmal
     if (!warSchonBezahlt) await nachBezahlung(a.kunde_id, { ...a, bekommen: betrag });
     terminkarteZeichnen({ erfolg: true });
@@ -2591,6 +2939,16 @@ document.addEventListener("click", async (event) => {
       return render();
     case "geld-tab":
       return oeffneDiagramm(wert);
+    case "mitarbeiter-neu":
+      return dialogMitarbeiter();
+    case "mitarbeiter-umbenennen":
+      return dialogMitarbeiter(finden("mitarbeiter"));
+    case "mitarbeiter-archivieren": {
+      const m = finden("mitarbeiter");
+      await aendern("mitarbeiter", id, { aktiv: m.aktiv === false });
+      zeigeToast(m.aktiv === false ? `${m.name} ist wieder dabei` : `${m.name} archiviert`);
+      return render();
+    }
     case "aufgabe-haken": {
       const a = finden("aufgaben");
       await aendern("aufgaben", id, { erledigt: !a.erledigt });
@@ -2750,7 +3108,9 @@ inhalt.addEventListener("submit", async (event) => {
   if (form.dataset.eintragen) {
     const a = daten.auftraege.find((x) => x.id === form.dataset.eintragen);
     const bekommen = Number(new FormData(form).get("bekommen"));
-    await aendern("auftraege", a.id, { bekommen });
+    const team = teamVon(a);
+    await aendern("auftraege", a.id, { bekommen, team });
+    await lohnBuchen({ ...a, bekommen, team });
     await nachBezahlung(a.kunde_id, { ...a, bekommen });
     zeigeToast(`${euro(bekommen)} eingetragen`);
     render();
