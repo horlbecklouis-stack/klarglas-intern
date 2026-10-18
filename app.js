@@ -1919,7 +1919,9 @@ const dialog = $("[data-dialog]");
 const dialogForm = $("[data-dialog-form]");
 let dialogAbsenden = null;
 
-function oeffneDialog({ titel, felder, knopf = "Speichern", absenden, entfernen, nachOeffnen }) {
+function oeffneDialog(einstellung, ohneHandy = false) {
+  const { titel, felder, knopf = "Speichern", absenden, entfernen, nachOeffnen } = einstellung;
+  dialogForm.classList.remove("hf");
   dialogForm.innerHTML = `
     <div class="dialog__kopf-handy">
       <button type="button" data-dialog-zu-handy>Abbrechen</button>
@@ -1949,8 +1951,9 @@ function oeffneDialog({ titel, felder, knopf = "Speichern", absenden, entfernen,
       karteZurueckOeffnen();
     };
   }
-  dialog.showModal();
+  if (!dialog.open) dialog.showModal();
   nachOeffnen?.(dialogForm);
+  if (istHandy() && !ohneHandy && !hFormular(dialogForm)) return oeffneDialog(einstellung, true);
   // Am Handy nicht sofort die Tastatur aufklappen
   if (!istHandy()) dialogForm.querySelector("input, select, textarea")?.focus();
 }
@@ -1967,6 +1970,7 @@ dialogForm.addEventListener("submit", async (event) => {
     karteZurueckOeffnen();
   } catch (fehler) {
     $("[data-dialog-fehler]", dialogForm).textContent = fehler.message;
+    $("[data-dialog-fehler]", dialogForm).scrollIntoView({ block: "center", behavior: "smooth" });
   } finally {
     knopf.disabled = false;
   }

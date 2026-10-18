@@ -2943,12 +2943,15 @@ body.handy .h-chips--wahl .h-chip {
 }
 
 /* Aufgaben-Zeilen leicht in Personenfarbe */
-body.handy .h-aufgabe:has(.h-haken--louis) {
-  background: color-mix(in srgb, #2b5cff 6%, transparent);
+body.handy .h-aufgabe:has(.h-haken--louis),
+body.handy .h-aufgabe:has(.h-haken--lukas) {
+  --p: #2b5cff;
+  background: color-mix(in srgb, var(--p) 13%, rgba(255, 255, 255, 0.5));
+  box-shadow: inset 4px 0 0 var(--p);
 }
 
 body.handy .h-aufgabe:has(.h-haken--lukas) {
-  background: color-mix(in srgb, #13a06b 7%, transparent);
+  --p: #13a06b;
 }
 
 body.handy .h-person {
@@ -2956,6 +2959,47 @@ body.handy .h-person {
   border-radius: 999px;
   background: color-mix(in srgb, currentColor 13%, transparent);
   font-size: 12px;
+}
+
+body.handy .h-person--louis,
+body.handy .h-person--lukas {
+  --p: #2b5cff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0)), var(--p);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+body.handy .h-person--lukas {
+  --p: #13a06b;
+}
+
+/* Geplant: Fix machen + Ändern */
+body.handy .h-geplant-knoepfe {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+body.handy .h-pill--aendern {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  padding: 0;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: color-mix(in srgb, #e67c73 16%, rgba(255, 255, 255, 0.8));
+  color: #b9473d;
+  box-shadow: var(--d-kante);
+}
+
+body.handy .h-pill--aendern svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* ---------- Geld ---------- */
@@ -3456,3 +3500,492 @@ body.handy .dialog__fuss [data-dialog-entfernen] {
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   body.handy { --d-glas: rgba(255, 255, 255, 0.88); }
 }
+
+/* ===================== Formulare am Handy (Entwurf A) ===================== */
+body.handy .hf {
+  --hf-feld: rgba(240, 243, 250, 0.95);
+  --hf-feder: cubic-bezier(0.3, 1.4, 0.5, 1);
+  gap: 14px;
+  color: #0b1530;
+}
+body.handy .hf svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+body.handy .hf button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+body.handy .hf button:active { transform: scale(0.96); }
+
+body.handy .hf-karte {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.62);
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), var(--d-schatten);
+}
+body.handy .hf-karte[hidden], body.handy .hf [hidden] { display: none !important; }
+body.handy .hf-titel { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 800; }
+body.handy .hf-untertitel { font-size: 13px; font-weight: 700; color: #5b6478; margin-bottom: -4px; }
+body.handy .hf-ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  color: #fff;
+  background: var(--d-glanz), var(--c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 5px 10px -6px var(--c);
+}
+body.handy .hf-ico svg { width: 16px; height: 16px; }
+body.handy .hf-ava {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--d-glanz), var(--c);
+}
+
+/* Karten-Innenleben: alte Feld-Stile zurücksetzen */
+body.handy .hf-karte :is(.feld, fieldset, .kanal-wahl, .chips) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+body.handy .hf textarea { min-height: 76px; padding: 12px; border-radius: 14px; font-size: 16px; }
+
+/* Preis-Karte */
+body.handy .hf-preis {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 16px 14px;
+  border-radius: 24px;
+  color: #fff;
+  background: var(--d-glanz), linear-gradient(135deg, #2b5cff, #5b3fd6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 18px 30px -18px #2b5cff;
+}
+body.handy .hf-preis::after {
+  content: "";
+  position: absolute;
+  right: -40px;
+  top: -50px;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+body.handy .hf-preis > small { display: block; font-size: 13px; font-weight: 600; opacity: 0.85; }
+body.handy .hf-preis__zahl { display: flex; align-items: baseline; gap: 4px; margin: 2px 0; }
+body.handy .hf-preis__zahl span { font-size: 30px; font-weight: 800; }
+body.handy .hf .hf-preis__zahl input {
+  position: relative;
+  z-index: 1;
+  width: 3ch;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: #fff;
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+body.handy .hf .hf-preis__zahl input::placeholder { color: rgba(255, 255, 255, 0.5); }
+body.handy .hf .hf-preis__zahl input:focus { background: none; box-shadow: 0 2px 0 rgba(255, 255, 255, 0.7); }
+body.handy .hf-preis__rech .hinweis { margin: 0; color: rgba(255, 255, 255, 0.85); font-size: 13px; font-variant-numeric: tabular-nums; }
+body.handy .hf-teil { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+body.handy .hf-teil span {
+  flex: 1 1 0;
+  min-width: 76px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 12px;
+  font-weight: 600;
+}
+body.handy .hf-teil b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+body.handy .hf-teil .hf-teil__kasse { background: rgba(10, 14, 30, 0.42); }
+body.handy .hf-preis__regel { margin-top: 9px; font-size: 12px; opacity: 0.85; }
+
+/* Kunde als Karte */
+body.handy .hf-kunde {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 18px;
+  background: var(--hf-feld);
+}
+body.handy .hf-kunde__ava {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 800;
+  background: var(--d-glanz), var(--c);
+}
+body.handy .hf-kunde--leer .hf-kunde__ava { color: #5b6478; background: #e3e7f0; font-size: 22px; font-weight: 500; }
+body.handy .hf-kunde__text { flex: 1; min-width: 0; display: grid; }
+body.handy .hf-kunde__text b { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.handy .hf-kunde__text small { color: #5b6478; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.handy .hf-kunde i { font-style: normal; color: #2b5cff; font-size: 13px; font-weight: 700; }
+body.handy .hf .hf-kunde select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; cursor: pointer; }
+
+/* Kacheln */
+body.handy .hf-kacheln { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 8px; }
+body.handy .hf-kacheln > :is(button, label) {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  align-content: start;
+  min-width: 0;
+  padding: 11px 10px;
+  border: 0;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--c) 12%, #fff);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  transition: transform 0.25s var(--hf-feder), background-color 0.2s;
+  cursor: pointer;
+}
+body.handy .hf-kacheln > * > span:not(.hf-ico, .hf-ava) { display: grid; min-width: 0; overflow-wrap: anywhere; }
+body.handy .hf-kacheln small { font-size: 11.5px; font-weight: 500; color: #5b6478; }
+body.handy .hf-kacheln :is(.hf-ico, .hf-ava) { width: 26px; height: 26px; }
+body.handy .hf-kacheln > :is([aria-checked="true"], :has(input:checked)) {
+  background: var(--d-glanz), var(--c);
+  color: #fff;
+  box-shadow: 0 10px 18px -10px var(--c);
+}
+body.handy .hf-kacheln > :is([aria-checked="true"], :has(input:checked)) small { color: rgba(255, 255, 255, 0.85); }
+body.handy .hf-kacheln > :is([aria-checked="true"], :has(input:checked)) :is(.hf-ico, .hf-ava) { background: rgba(255, 255, 255, 0.25); box-shadow: none; }
+body.handy .hf-kacheln input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+body.handy .hf-kacheln--klein > * { justify-items: center; text-align: center; padding: 10px 4px 9px; font-size: 12px; }
+body.handy .hf-kacheln--klein > * > span:not(.hf-ico, .hf-ava) { justify-items: center; }
+body.handy .hf-kacheln--status > * { display: flex; align-items: center; justify-content: flex-start; gap: 6px; padding: 9px 8px; text-align: left; font-size: 12px; }
+body.handy .hf-punkt { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+body.handy .hf-kacheln--status > [aria-checked="true"] .hf-punkt { background: #fff; }
+
+/* Kontaktweg als 4 kleine Kacheln */
+body.handy .hf .kanal-wahl__reihe { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+body.handy .hf .kanal-wahl__knopf {
+  min-height: 0;
+  gap: 6px;
+  padding: 10px 2px 9px;
+  border: 0;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--c) 12%, #fff);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #0b1530;
+}
+body.handy .hf .kanal-wahl__knopf svg {
+  box-sizing: content-box;
+  width: 15px;
+  height: 15px;
+  padding: 5px;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--d-glanz), var(--c);
+  stroke-width: 2;
+}
+body.handy .hf .kanal-wahl__knopf:has(input:checked) {
+  background: var(--d-glanz), var(--c);
+  color: #fff;
+  box-shadow: 0 10px 18px -10px var(--c);
+}
+body.handy .hf .kanal-wahl__knopf:has(input:checked) svg { background: rgba(255, 255, 255, 0.25); }
+
+/* Chips (Dauer, Schnellwahl) */
+body.handy .hf-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+body.handy .hf-chips button {
+  padding: 8px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--hf-feld);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+body.handy .hf-chips button[aria-checked="true"] { background: var(--d-glanz), var(--c); color: #fff; box-shadow: 0 6px 12px -8px var(--c); }
+
+/* Team als Personen-Pillen */
+body.handy .hf .team-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+body.handy .hf .hf-person {
+  gap: 8px;
+  min-height: 0;
+  padding: 5px 13px 5px 5px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c) 12%, #fff);
+  font-size: 15px;
+  font-weight: 700;
+  color: #0b1530;
+  transition: transform 0.25s var(--hf-feder);
+}
+body.handy .hf .hf-person:has(input:checked) { background: var(--d-glanz), var(--c); color: #fff; box-shadow: 0 8px 14px -9px var(--c); }
+body.handy .hf .hf-person:has(input:checked) .hf-ava { background: rgba(255, 255, 255, 0.28); }
+
+/* Tagesleiste + Uhrzeiten */
+body.handy .hf-tage {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  margin: 0 -14px;
+  padding: 2px 14px 4px;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0 14px;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+body.handy .hf-tage::-webkit-scrollbar { display: none; }
+body.handy .hf-tage button {
+  flex: none;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: 52px;
+  padding: 8px 0 9px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--hf-feld);
+  scroll-snap-align: start;
+}
+body.handy .hf-tage small { font-size: 11px; font-weight: 700; color: #5b6478; text-transform: uppercase; letter-spacing: 0.04em; }
+body.handy .hf-tage b { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+body.handy .hf-tage em { font-style: normal; font-size: 9.5px; color: #5b6478; white-space: nowrap; }
+body.handy .hf-tage .hf-tag--belegt em { color: #c4544a; font-weight: 700; }
+body.handy .hf-tage button[aria-pressed="true"] { background: var(--d-glanz), #2b5cff; color: #fff; box-shadow: 0 10px 16px -10px #2b5cff; }
+body.handy .hf-tage button[aria-pressed="true"] :is(small, em) { color: rgba(255, 255, 255, 0.88); }
+body.handy .hf-zeiten { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+body.handy .hf-zeiten button {
+  padding: 9px 0;
+  border: 0;
+  border-radius: 12px;
+  background: var(--hf-feld);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+body.handy .hf-zeiten .hf-zeit--belegt { color: #b0b5c1; text-decoration: line-through; }
+body.handy .hf-zeiten button[aria-pressed="true"] { background: var(--d-glanz), #2b5cff; color: #fff; }
+
+/* Kleines „Genau“-Feld unter Tag/Uhrzeit */
+body.handy .hf .hf-genau,
+body.handy .hf .hf-klein {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+body.handy .hf .hf-genau > span:first-child,
+body.handy .hf .hf-klein > span:first-child { flex: none; padding: 0; font-size: 13px; color: #5b6478; }
+body.handy .hf .hf-genau input,
+body.handy .hf .hf-klein input { flex: 1; min-width: 0; min-height: 38px; font-size: 15px; }
+
+/* Schalter */
+body.handy .hf-schalter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--c) 12%, #fff);
+  cursor: pointer;
+}
+body.handy .hf-schalter > span { flex: 1; display: grid; font-size: 14px; font-weight: 700; }
+body.handy .hf-schalter small { font-size: 12px; font-weight: 500; color: #5b6478; margin-top: 1px; }
+body.handy .hf .hf-kipp {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 50px;
+  height: 30px;
+  margin: 0;
+  border-radius: 999px;
+  background: #d5d9e3;
+  transition: background-color 0.25s;
+  cursor: pointer;
+}
+body.handy .hf .hf-kipp::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s var(--hf-feder);
+}
+body.handy .hf .hf-kipp:checked { background: var(--c); }
+body.handy .hf .hf-kipp:checked::after { transform: translateX(20px); }
+
+/* Stepper */
+body.handy .hf-stepper { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+body.handy .hf-step { display: grid; gap: 8px; min-width: 0; padding: 12px; border-radius: 18px; background: color-mix(in srgb, var(--c) 10%, #fff); }
+body.handy .hf-step > small { font-size: 12px; font-weight: 700; color: #5b6478; }
+body.handy .hf-step > small b { color: var(--c); }
+body.handy .hf-step > div { display: flex; align-items: center; gap: 4px; }
+body.handy .hf .hf-step input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: 8px;
+  background: none;
+  font-size: 24px;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+body.handy .hf .hf-step input::-webkit-inner-spin-button { -webkit-appearance: none; }
+body.handy .hf-step button {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--c);
+  font-size: 20px;
+  font-weight: 700;
+  box-shadow: 0 4px 10px -6px rgba(11, 21, 48, 0.4);
+}
+body.handy .hf-step .hf-plus { background: var(--d-glanz), var(--c); color: #fff; }
+body.handy .hf .preisart .segment { margin: 0; }
+
+/* Textfeld mit Icon */
+body.handy .hf .hf-eingabe {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "ico titel" "ico feld";
+  column-gap: 10px;
+  align-items: center;
+  padding: 4px 12px 4px 6px;
+  border-radius: 16px;
+  background: var(--hf-feld);
+  transition: box-shadow 0.2s, background-color 0.2s;
+}
+body.handy .hf .hf-eingabe:focus-within { background: #fff; box-shadow: 0 0 0 3px rgba(43, 92, 255, 0.28); }
+body.handy .hf .hf-eingabe .hf-ico { grid-area: ico; width: 30px; height: 30px; }
+body.handy .hf .hf-eingabe > span:not(.hf-ico) { grid-area: titel; padding: 6px 0 0; font-size: 11.5px; font-weight: 700; color: #5b6478; }
+body.handy .hf .hf-eingabe input {
+  grid-area: feld;
+  min-height: 0;
+  padding: 0 0 6px;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 16px;
+  font-weight: 600;
+}
+body.handy .hf .hf-eingabe input:focus { background: none; box-shadow: none; }
+
+/* Großer Betrag */
+body.handy .hf-gross {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 18px 14px 16px;
+  border-radius: 24px;
+  color: #fff;
+  background: var(--d-glanz), var(--c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 18px 30px -18px var(--c);
+}
+body.handy .hf-gross::after { content: ""; position: absolute; right: -40px; top: -50px; width: 150px; height: 150px; border-radius: 50%; background: rgba(255, 255, 255, 0.12); pointer-events: none; }
+body.handy .hf-gross small { font-size: 13px; font-weight: 600; opacity: 0.85; }
+body.handy .hf-gross > div { display: flex; align-items: baseline; gap: 4px; }
+body.handy .hf-gross > div span { font-size: 30px; font-weight: 800; }
+body.handy .hf .hf-gross input {
+  position: relative;
+  z-index: 1;
+  width: 3ch;
+  max-width: 80%;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: #fff;
+  font-size: 44px;
+  font-weight: 800;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+body.handy .hf .hf-gross input::placeholder { color: rgba(255, 255, 255, 0.5); }
+body.handy .hf .hf-gross input:focus { background: none; box-shadow: 0 2px 0 rgba(255, 255, 255, 0.7); }
+
+/* Kunde-Vorschau */
+body.handy .hf-vorschau {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 24px;
+  background: var(--d-glanz), color-mix(in srgb, var(--c) 18%, rgba(255, 255, 255, 0.7));
+  box-shadow: var(--d-kante), var(--d-schatten);
+  transition: background-color 0.3s;
+}
+body.handy .hf-vorschau .hf-ava { width: 58px; height: 58px; font-size: 20px; box-shadow: 0 10px 20px -12px var(--c); }
+body.handy .hf-vorschau > span:last-child { display: grid; justify-items: start; min-width: 0; }
+body.handy .hf-vorschau b { font-size: 20px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+body.handy .hf-vorschau small { margin-top: 4px; padding: 3px 10px; border-radius: 999px; background: var(--d-glanz), var(--c); color: #fff; font-size: 12px; font-weight: 700; }
+
+/* Aufgabe: großer Text */
+body.handy .hf .hf-grosstext input {
+  min-height: 0;
+  padding: 2px 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+body.handy .hf .hf-grosstext input::placeholder { color: #a9afbd; }
+body.handy .hf .hf-grosstext input:focus { background: none; box-shadow: none; }
+
+/* Nach dem Termin */
+body.handy .hf-nach { border-radius: 22px; background: color-mix(in srgb, #13a06b 10%, rgba(255, 255, 255, 0.62)); box-shadow: var(--d-kante), var(--d-schatten); }
+body.handy .hf-nach summary { list-style: none; display: flex; align-items: center; gap: 9px; padding: 14px; font-size: 15px; font-weight: 800; cursor: pointer; }
+body.handy .hf-nach summary::-webkit-details-marker { display: none; }
+body.handy .hf-nach summary small { margin-left: auto; font-size: 12px; font-weight: 600; color: #5b6478; }
+body.handy .hf-paar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 14px 14px; }
+body.handy .hf-paar .feld { gap: 4px; padding: 10px 12px; border-radius: 14px; background: #fff; }
+body.handy .hf .hf-paar input { min-height: 0; padding: 0; background: none; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+body.handy .hf .hf-paar input:focus { background: none; box-shadow: none; }
+body.handy .hf .hf-paar input::placeholder { font-size: 13px; font-weight: 500; }
+
+@media (prefers-reduced-motion: reduce) {
+  body.handy .hf * { transition: none !important; }
+}
+body.handy .hf input[type="number"] { -moz-appearance: textfield; }
+body.handy .hf input[type="number"]::-webkit-inner-spin-button,
+body.handy .hf input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+body.handy .hf .segment--preisart { padding: 3px; border-radius: 13px; background: var(--hf-feld); }
+body.handy .hf .segment--preisart .segment__knopf { min-height: 38px; border-radius: 10px; color: #5b6478; font-size: 14px; }
+body.handy .hf .segment--preisart .segment__knopf:has(input:checked) { background: #fff; color: #0b1530; box-shadow: 0 3px 8px -4px rgba(11, 21, 48, 0.35); }
+body.handy .hf [data-dialog-fehler]:not(:empty) { margin: 0; padding: 11px 14px; border-radius: 16px; background: #fde8e6; color: #c4302a; font-weight: 700; font-size: 14px; }
+body.handy .hf [data-dialog-fehler]:empty { display: none; }

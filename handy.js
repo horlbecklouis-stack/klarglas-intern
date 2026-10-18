@@ -203,7 +203,7 @@ function hUebersicht() {
       links: d ? hDatum(a.datum) : `<span class="h-datum h-datum--leer" aria-hidden="true">?</span>`,
       titel: `${esc(auftragName(a))}${istTermin(a) ? ` <span class="h-art">${esc(auftragTitel(a))}</span>` : ""}`,
       unter: d ? `wahrscheinlich ${esc(hTagText(d))}, ${esc(hUhr(d))} Uhr${d < new Date() ? ' · <span class="h-minus">vorbei</span>' : ""}` : "noch ohne Tag",
-      extra: `<button class="h-pill h-pill--klein h-pill--voll" type="button" data-aktion="termin-fix" data-id="${esc(a.id)}">Fix machen</button>`,
+      extra: `<span class="h-geplant-knoepfe"><button class="h-pill h-pill--klein h-pill--voll" type="button" data-aktion="termin-fix" data-id="${esc(a.id)}">Fix machen</button><button class="h-pill h-pill--klein h-pill--aendern" type="button" data-aktion="auftrag-bearbeiten" data-id="${esc(a.id)}" aria-label="Datum ändern"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg></button></span>`,
       chevron: false,
       inset: 64,
     });
@@ -1156,7 +1156,7 @@ function hSheetGeste(el, schliessen) {
   let start = null, dy = 0, t0 = 0;
   el.addEventListener("touchstart", (e) => {
     if (!document.body.classList.contains("handy")) return;
-    if (e.target.closest("input, textarea, select, .h-diagramm, .chips, .h-chips")) return;
+    if (e.target.closest("input, textarea, select, .h-diagramm, .chips, .h-chips, .hf-tage, .hf-chips")) return;
     const scroller = e.target.closest(".dialog__form, .terminkarte, .diagramm-popup__inhalt") || el;
     if (scroller.scrollTop > 0 || el.scrollTop > 0) return;
     start = e.touches[0].clientY;
@@ -1390,4 +1390,534 @@ function hEinrichten() {
     hPanelZu();
     hFab(false);
   });
+}
+
+/* ===================== Formulare am Handy (Entwurf A) =====================
+   Die Felder aus app.js bleiben, wie sie sind (Speichern, Prüfen, Lohn …). Hier werden sie nur
+   in Glaskarten umsortiert und bekommen Kacheln, Tagesleiste und Stepper, die ins echte Feld schreiben. */
+
+const HF_PERSON = { Louis: "#2b5cff", Lukas: "#13a06b", Beide: "#151a2e", Kasse: "#151a2e" };
+const HF_MITARBEITER = ["#e67c73", "#6a4be0", "#d08a00", "#0fa3b1"];
+const hfFarbe = (name) => HF_PERSON[name] || HF_MITARBEITER[Math.max(0, aktiveMitarbeiter().findIndex((m) => m.name === name)) % HF_MITARBEITER.length];
+const HF_ICON = {
+  fenster: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v18M4 12h16"/>',
+  haus: '<path d="M4 11.5 12 4.5l8 7"/><path d="M6 10v9.5h12V10"/><path d="M10 19.5v-5h4v5"/>',
+  euro: '<path d="M15 8.5A4.5 4.5 0 1 0 15 15.5M6 10.5h7M6 13.5h7"/>',
+  wann: '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  leute: '<circle cx="9" cy="8" r="3.5"/><path d="M3 20c.8-3.5 3.2-5.5 6-5.5s5.2 2 6 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.6c2.6.3 4.3 2.2 5 5.4"/>',
+  person: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>',
+  pfeil: '<path d="M4 12h16M14 6l6 6-6 6"/>',
+  notiz: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+  haken: '<path d="m5 12 4.5 4.5L19 7"/>',
+  pin: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  link: '<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>',
+  lupe: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
+  punkte: '<circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/>',
+  status: '<path d="M4 7h16M4 12h10M4 17h6"/>',
+  uhr: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  karte: '<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/>',
+  putz: '<path d="M9 3h6v4l2 3v11H7V10l2-3z"/>',
+  werkzeug: '<path d="M14 4l6 6-9 9H5v-6z"/>',
+  auto: '<circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M5 17H3v-5l2-5h10l4 5h2v5h-2M9 17h6"/>',
+  werbung: '<path d="M4 10v4l12 5V5zM16 9a3 3 0 0 1 0 6"/>',
+};
+const hfIco = (icon, farbe) => `<span class="hf-ico" style="--c:${farbe}" aria-hidden="true"><svg viewBox="0 0 24 24">${HF_ICON[icon] || ICONS[icon] || ""}</svg></span>`;
+const hfAva = (text, farbe) => `<span class="hf-ava" style="--c:${farbe}" aria-hidden="true">${esc(text)}</span>`;
+const hfKurz = (name) => (name === "Beide" ? "L+L" : String(name).slice(0, 2));
+
+// Wert ins echte Feld schreiben und so tun, als hätte man getippt
+function hfSetze(el, wert) {
+  el.value = wert;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+// Großes Zahlenfeld so breit wie sein Inhalt, damit das € direkt dahinter steht
+function hfBreite(input) {
+  const passen = () => (input.style.width = `${Math.max(1, (input.value || input.placeholder || "0").length) + 0.4}ch`);
+  input.addEventListener("input", passen);
+  passen();
+  return passen;
+}
+
+function hfEl(html) {
+  const t = document.createElement("template");
+  t.innerHTML = html.trim();
+  return t.content.firstElementChild;
+}
+
+// Glaskarte mit Titelzeile; nimmt vorhandene Elemente mit (null wird übersprungen)
+function hfKarte(titel, icon, farbe, teile, klasse = "") {
+  const k = hfEl(`<section class="hf-karte ${klasse}">${titel ? `<div class="hf-titel">${hfIco(icon, farbe)}<span>${titel}</span></div>` : ""}</section>`);
+  teile.filter(Boolean).forEach((t) => k.append(t));
+  return k;
+}
+
+// Feld-Label (label.feld) zum Element machen, das man verschieben kann; das Label selbst bleibt dran
+const hfFeld = (form, name) => form.querySelector(`[name="${name}"]`)?.closest(".feld, .schalter-zeile") || null;
+
+// Kacheln statt <select>: eine Wahl, schreibt ins (versteckte) Select
+function hfKacheln(select, items, { spalten = 2, klein = false, klasse = "" } = {}) {
+  const box = hfEl(`<div class="hf-kacheln${klein ? " hf-kacheln--klein" : ""} ${klasse}" style="--n:${spalten}" role="radiogroup"></div>`);
+  box.innerHTML = items.map((i) => `<button type="button" role="radio" data-wert="${esc(i.wert)}" style="--c:${i.farbe}">
+      ${i.ava ? hfAva(i.ava, i.farbe) : i.icon ? hfIco(i.icon, i.farbe) : i.punkt ? `<i class="hf-punkt"></i>` : ""}
+      <span>${esc(i.name)}${i.unter ? `<small>${esc(i.unter)}</small>` : ""}</span>
+    </button>`).join("");
+  const zeigen = () => box.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", b.dataset.wert === select.value));
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    hVibe(5);
+    hfSetze(select, b.dataset.wert);
+    zeigen();
+  });
+  select.closest(".feld")?.replaceWith(box);
+  select.hidden = true;
+  box.append(select);
+  zeigen();
+  return box;
+}
+
+// Chips statt <select> (z. B. Dauer)
+function hfChips(select, farbe) {
+  const box = hfEl(`<div class="hf-chips" style="--c:${farbe}" role="radiogroup"></div>`);
+  box.innerHTML = [...select.options].map((o) => `<button type="button" role="radio" data-wert="${esc(o.value)}">${esc(o.textContent)}</button>`).join("");
+  const zeigen = () => box.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", b.dataset.wert === select.value));
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    hfSetze(select, b.dataset.wert);
+    zeigen();
+  });
+  select.closest(".feld")?.replaceWith(box);
+  select.hidden = true;
+  box.append(select);
+  zeigen();
+  return box;
+}
+
+// Kunde als Karte; das echte Select liegt unsichtbar darüber und öffnet die normale Auswahl
+function hfKunde(select, { optional = false } = {}) {
+  const k = hfEl(`<label class="hf-kunde"><span class="hf-kunde__ava"></span><span class="hf-kunde__text"><b></b><small></small></span><i></i></label>`);
+  const zeigen = () => {
+    const kunde = kundeVon(select.value);
+    const ava = $(".hf-kunde__ava", k);
+    ava.textContent = kunde ? tkInitialen(kunde.name) || "?" : "+";
+    ava.style.setProperty("--c", kunde ? hStatusFarbe(kunde.status) : "#c3c8d4");
+    $("b", k).textContent = kunde ? kunde.name : "Kein Kunde";
+    const besuche = kunde ? auftraegeVon(kunde.id).filter((x) => zahl(x.bekommen) !== null).length : 0;
+    $("small", k).textContent = kunde ? [kunde.adresse, besuche ? `${besuche}× da gewesen` : ""].filter(Boolean).join(" · ") || "Kunde" : optional ? "optional verknüpfen" : "Kunde wählen";
+    $("i", k).textContent = kunde ? "Ändern" : "Wählen";
+    k.classList.toggle("hf-kunde--leer", !kunde);
+  };
+  select.closest(".feld")?.replaceWith(k);
+  k.append(select);
+  select.addEventListener("change", zeigen);
+  zeigen();
+  return k;
+}
+
+// Text-Feld mit buntem Icon links
+function hfEingabe(label, icon, farbe) {
+  if (!label) return null;
+  label.classList.add("hf-eingabe");
+  label.insertAdjacentHTML("afterbegin", hfIco(icon, farbe));
+  return label;
+}
+
+// Zahl mit − und + (das echte Feld bleibt zum Tippen in der Mitte)
+function hfStepper(label, { schritt = 1, min = 0, farbe, titel }) {
+  if (!label) return null;
+  const input = label.querySelector("input");
+  const s = hfEl(`<div class="hf-step" style="--c:${farbe}"><small>${titel}</small><div><button type="button" aria-label="Weniger">–</button><span></span><button type="button" class="hf-plus" aria-label="Mehr">+</button></div></div>`);
+  input.classList.add("hf-gross-feld");
+  $("span", s).replaceWith(input);
+  const [weniger, mehr] = s.querySelectorAll("button");
+  const um = (d) => {
+    const alt = Number(String(input.value).replace(",", ".")) || 0;
+    hfSetze(input, Math.max(min, Math.round((alt + d) * 100) / 100));
+    hVibe(4);
+  };
+  weniger.onclick = () => um(-schritt);
+  mehr.onclick = () => um(schritt);
+  label.replaceWith(s);
+  return s;
+}
+
+// Schalter (Checkbox) als iOS-Kippschalter in farbiger Zeile
+function hfSchalter(label, titel, unter, farbe) {
+  if (!label) return null;
+  const input = label.querySelector("input");
+  const z = hfEl(`<label class="hf-schalter" style="--c:${farbe}"><span>${titel}${unter ? `<small>${unter}</small>` : ""}</span></label>`);
+  input.removeAttribute("style");
+  input.classList.add("hf-kipp");
+  z.append(input);
+  label.replaceWith(z);
+  return z;
+}
+
+// Großer Betrag oben (Ausgabe, Auszahlung)
+function hfBetrag(label, farbe, titel = "Betrag") {
+  if (!label) return null;
+  const input = label.querySelector("input");
+  const g = hfEl(`<div class="hf-gross" style="--c:${farbe}"><small>${titel}</small><div><span>€</span></div></div>`);
+  input.placeholder = "0";
+  input.classList.add("hf-gross-feld");
+  input.setAttribute("aria-label", `${titel} in Euro`);
+  $("div", g).prepend(input);
+  hfBreite(input);
+  label.replaceWith(g);
+  return g;
+}
+
+const HF_TAGE = 14;
+const hfTagKurz = (d) => ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][d.getDay()];
+const hfTermineAm = (d) => kalEintraege().filter((a) => {
+  const x = new Date(a.datum);
+  return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth() && x.getDate() === d.getDate();
+});
+
+// Tagesleiste (14 Tage) – gibt das Element und eine Zeige-Funktion zurück
+function hfTagLeiste(start, gewaehlt, beimTippen) {
+  const box = hfEl(`<div class="hf-tage"></div>`);
+  const heute = new Date();
+  for (let i = 0; i < HF_TAGE; i++) {
+    const d = tagPlus(start, i);
+    const n = hfTermineAm(d).length;
+    const istHeute = isoAusDatum(d) === isoAusDatum(heute);
+    box.insertAdjacentHTML("beforeend", `<button type="button" data-tag="${isoAusDatum(d)}"${n ? ' class="hf-tag--belegt"' : ""}><small>${istHeute ? "Heute" : hfTagKurz(d)}</small><b>${d.getDate()}</b><em>${n ? `${n} Termin${n === 1 ? "" : "e"}` : MONATE_KURZ[d.getMonth()]}</em></button>`);
+  }
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (b) beimTippen(b.dataset.tag);
+  });
+  const zeigen = (iso) => box.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.tag === iso));
+  zeigen(gewaehlt);
+  return { box, zeigen };
+}
+
+// „Wann?“ für datetime-local: Tagesleiste + Uhrzeiten, darunter das echte Feld für alles andere
+function hfWann(input) {
+  const wert = () => input.value; // "2026-10-24T10:00"
+  const heute = new Date();
+  const start0 = wert() ? new Date(wert()) : heute;
+  const start = start0 < tagPlus(heute, 0) || start0 > tagPlus(heute, HF_TAGE - 1) ? start0 : heute;
+  const tagStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const leiste = hfTagLeiste(tagStart, wert().slice(0, 10), (tag) => {
+    hfSetze(input, `${tag}T${wert().slice(11, 16) || "10:00"}`);
+    zeigen();
+  });
+  const zeiten = hfEl(`<div class="hf-zeiten"></div>`);
+  zeiten.innerHTML = Array.from({ length: 11 }, (_, i) => `${String(8 + i).padStart(2, "0")}:00`).map((t) => `<button type="button" data-zeit="${t}">${t}</button>`).join("");
+  zeiten.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    hVibe(4);
+    hfSetze(input, `${wert().slice(0, 10) || isoAusDatum(heute)}T${b.dataset.zeit}`);
+    zeigen();
+  });
+  const genau = input.closest(".feld");
+  genau.classList.add("hf-genau");
+  $("span", genau).textContent = "Genau";
+  const zeigen = () => {
+    const tag = wert().slice(0, 10);
+    const zeit = wert().slice(11, 16);
+    leiste.zeigen(tag);
+    const belegt = tag ? hfTermineAm(new Date(`${tag}T12:00`)).map((a) => new Date(a.datum).getHours()) : [];
+    zeiten.querySelectorAll("button").forEach((b) => {
+      b.setAttribute("aria-pressed", b.dataset.zeit === zeit);
+      b.classList.toggle("hf-zeit--belegt", belegt.includes(Number(b.dataset.zeit.slice(0, 2))) && b.dataset.zeit !== zeit);
+    });
+  };
+  input.addEventListener("input", zeigen);
+  zeigen();
+  const wahl = leiste.box.querySelector('[aria-pressed="true"]');
+  if (wahl) requestAnimationFrame(() => (leiste.box.scrollLeft = wahl.offsetLeft - 14));
+  return [leiste.box, zeiten, genau];
+}
+
+// Tag für type=date: Schnellwahl-Chips (+ optional Tagesleiste), darunter das echte Feld
+function hfTag(input, { schnell, leiste = false, farbe = "#2b5cff" }) {
+  const heute = new Date();
+  const chips = hfEl(`<div class="hf-chips" style="--c:${farbe}"></div>`);
+  chips.innerHTML = schnell.map(([name]) => `<button type="button">${name}</button>`).join("");
+  const tage = leiste ? hfTagLeiste(new Date(heute.getFullYear(), heute.getMonth(), heute.getDate()), input.value, (tag) => { hfSetze(input, tag); zeigen(); }) : null;
+  chips.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const ziel = schnell.find(([name]) => name === b.textContent)[1];
+    hfSetze(input, ziel === null ? "" : isoAusDatum(ziel));
+    zeigen();
+  });
+  const genau = input.closest(".feld");
+  genau.classList.add("hf-genau");
+  $("span", genau).textContent = "Genau";
+  const zeigen = () => {
+    chips.querySelectorAll("button").forEach((b) => {
+      const ziel = schnell.find(([name]) => name === b.textContent)[1];
+      b.setAttribute("aria-checked", (ziel === null ? "" : isoAusDatum(ziel)) === input.value);
+    });
+    tage?.zeigen(input.value);
+  };
+  input.addEventListener("input", zeigen);
+  zeigen();
+  return [chips, tage?.box, genau];
+}
+
+const hfNaechster = (wochentag) => {
+  const h = new Date();
+  const d = new Date(h.getFullYear(), h.getMonth(), h.getDate());
+  return tagPlus(d, ((wochentag - d.getDay() + 7) % 7) || 7);
+};
+
+// Teambereich: Chips bekommen Personenfarbe + Kürzel
+function hfTeam(form) {
+  form.querySelectorAll('input[name="team"]').forEach((input) => {
+    const chip = input.closest(".chip");
+    chip.classList.add("hf-person");
+    chip.style.setProperty("--c", hfFarbe(input.value));
+    chip.insertAdjacentHTML("afterbegin", hfAva(hfKurz(input.value), hfFarbe(input.value)));
+  });
+  return form.querySelector(".team-chips");
+}
+
+// Kanal-Kacheln: Farbe pro Kanal
+function hfKanal(form) {
+  const f = form.querySelector(".kanal-wahl");
+  if (!f) return null;
+  f.querySelectorAll("input[name=kanal]").forEach((i) => i.closest("label").style.setProperty("--c", KANAELE[i.value]?.farbe || "#2b5cff"));
+  f.querySelector("legend")?.remove();
+  return f;
+}
+
+/* ---------- Die einzelnen Formulare ---------- */
+
+function hfAuftrag(form) {
+  const leistung = form.querySelector("[name=leistung]");
+  const items = [
+    { wert: "Fensterreinigung", name: "Fensterreinigung", unter: "pro Fenster", icon: "fenster", farbe: "#2b5cff" },
+    { wert: "Nachbarschaftshilfe", name: "Nachbarschaftshilfe", unter: "Stunden oder fest", icon: "haus", farbe: "#d08a00" },
+  ];
+  if (leistung.value && !items.some((i) => i.wert === leistung.value)) items.push({ wert: leistung.value, name: leistung.value, unter: "alt", icon: "punkte", farbe: "#8a93a6" });
+  const leistungKacheln = hfKacheln(leistung, items, { spalten: items.length });
+
+  // Preis-Karte oben: geschätzter Preis (Feld zum Überschreiben) + Lohn nach 25-%-Regel
+  const geschaetzt = form.querySelector("[data-geschaetzt]");
+  const preisLabel = form.querySelector("[data-geschaetzt-label]");
+  const reste = hfEl(`<div class="hf-reste" hidden></div>`);
+  reste.append(geschaetzt.closest(".feld"), form.querySelector("[data-lohn-vorschau]"));
+  const preis = hfEl(`<div class="hf-preis"><small data-hf-preis-titel></small><div class="hf-preis__zahl"><span>€</span></div><div class="hf-preis__rech"></div><div class="hf-teil"></div><div class="hf-preis__regel"></div></div>`);
+  geschaetzt.placeholder = "–";
+  geschaetzt.classList.add("hf-gross-feld");
+  $(".hf-preis__zahl", preis).prepend(geschaetzt);
+  $(".hf-preis__rech", preis).append(form.querySelector("[data-schaetz-hinweis]"));
+  const bekommenLabel = hfFeld(form, "bekommen");
+  const breite = hfBreite(geschaetzt);
+  const preisZeigen = () => {
+    breite();
+    const werte = Object.fromEntries(new FormData(form).entries());
+    const bekommen = zahl(werte.bekommen);
+    const betrag = bekommen ?? zahl(geschaetzt.value) ?? 0;
+    $("[data-hf-preis-titel]", preis).textContent = bekommen !== null ? "Bekommen" : preisLabel.textContent.replace(" (€)", "");
+    const team = teamAusForm(form);
+    const prozent = zahl(werte.anteil_prozent) ?? standardAnteil();
+    const teil = lohnAufteilung({ bekommen: betrag, team, prozent });
+    const kassePct = Math.max(0, 100 - prozent * teil.loehne.length);
+    $(".hf-teil", preis).innerHTML = [...teil.loehne.map((l) => `<span>${esc(l.name)} · ${prozent} %<b>${euro(l.betrag)}</b></span>`), `<span class="hf-teil__kasse">Kasse · ${kassePct} %<b>${euro(teil.kasse)}</b></span>`].join("");
+    $(".hf-preis__regel", preis).textContent = !team.length ? "Unten auswählen, wer mitarbeitet."
+      : teil.zuViel ? "Achtung: zusammen über 100 %!"
+      : teil.beideChefs && !teil.loehne.length ? "Ihr beide seid dabei: alles geht in die Kasse."
+      : teil.beideChefs ? "Ihr beide seid dabei: nur die Mitarbeiter bekommen ihren Anteil."
+      : `${prozent} % pro Kopf, der Rest geht in die Kasse.`;
+  };
+  form.addEventListener("input", preisZeigen);
+  form.addEventListener("change", preisZeigen);
+
+  // Fenster und Stunden als Stepper
+  const fensterReihe = form.querySelector("[data-nur-fenster]");
+  const p = preise();
+  fensterReihe.className = "hf-stepper";
+  hfStepper(hfFeld(form, "fenster_normal"), { farbe: "#2b5cff", titel: `Normal · <b>${euro(p.preis_normal)}</b>` });
+  hfStepper(hfFeld(form, "fenster_boden"), { farbe: "#6a4be0", titel: `Bodentief · <b>${euro(p.preis_boden)}</b>` });
+  const stundenReihe = form.querySelector("[data-nur-stundenlohn]");
+  stundenReihe.className = "hf-stepper";
+  hfStepper(hfFeld(form, "stunden"), { schritt: 0.5, farbe: "#d08a00", titel: "Geschätzt · <b>Stunden</b>" });
+  hfStepper(hfFeld(form, "stundensatz"), { schritt: 1, farbe: "#13a06b", titel: "Stundenlohn · <b>€</b>" });
+  const preisart = form.querySelector("[data-nur-stunden]");
+  preisart.querySelector("legend")?.remove();
+  const fensterKarte = hfKarte("Fenster", "fenster", "#2b5cff", [fensterReihe], "hf-karte--fenster");
+  const nachbarKarte = hfKarte("Abrechnung", "euro", "#d08a00", [preisart, stundenReihe], "hf-karte--nachbar");
+  const fensterSichtbar = () => {
+    const fenster = leistung.value === "Fensterreinigung";
+    fensterKarte.hidden = !fenster;
+    nachbarKarte.hidden = fenster;
+  };
+  leistung.addEventListener("change", fensterSichtbar);
+  fensterSichtbar();
+
+  const datum = form.querySelector("[name=datum]");
+  const vorl = hfSchalter(form.querySelector(".schalter-zeile"), "Noch nicht fest", "Steht als „Geplant“ mit ? im Kalender", "#e67c73");
+
+  const anteil = hfFeld(form, "anteil_prozent");
+  anteil.classList.add("hf-klein");
+  $("span", anteil).textContent = "Anteil pro Kopf (%)";
+  const wer = hfKarte("Wer ist dabei?", "leute", "#e67c73", [hfTeam(form), anteil]);
+
+  const notiz = hfFeld(form, "notiz");
+  $("span", notiz).textContent = "Notiz";
+  const kontakt = hfKarte("Kontakt über", "pfeil", "#d08a00", [hfKanal(form), notiz]);
+
+  const nachher = hfEl(`<details class="hf-nach"><summary>${hfIco("haken", "#13a06b")}<span>Nach dem Termin</span><small>Geld &amp; Zeit</small></summary><div class="hf-paar"></div></details>`);
+  const gebraucht = hfFeld(form, "dauer_echt");
+  $("span", gebraucht).textContent = "Gebraucht (Std.)";
+  $("span", bekommenLabel).textContent = "Bekommen (€)";
+  $(".hf-paar", nachher).append(bekommenLabel, gebraucht);
+  nachher.querySelectorAll("input").forEach((i) => i.classList.add("hf-gross-feld"));
+  if (zahl(bekommenLabel.querySelector("input").value) !== null || gebraucht.querySelector("input").value) nachher.open = true;
+  const abgesagt = form.querySelector("[name=abgesagt]") ? hfSchalter(hfFeld(form, "abgesagt"), "Abgesagt", "Fällt aus, zählt nicht mehr", "#e5372f") : null;
+
+  return [
+    reste,
+    preis,
+    hfKarte("", "", "", [hfKunde(form.querySelector("[name=kunde_id]")), leistungKacheln]),
+    fensterKarte,
+    nachbarKarte,
+    hfKarte("Wann?", "wann", "#2b5cff", [...hfWann(datum), vorl]),
+    wer,
+    kontakt,
+    nachher,
+    abgesagt && hfKarte("", "", "", [abgesagt]),
+  ];
+}
+
+function hfKunde_(form) {
+  const name = form.querySelector("[name=name]");
+  const status = form.querySelector("[name=status]");
+  const vorschau = hfEl(`<div class="hf-vorschau"><span class="hf-ava"></span><span><b></b><small></small></span></div>`);
+  const zeigen = () => {
+    const s = STATUS.find((x) => x.id === status.value) || STATUS[0];
+    vorschau.style.setProperty("--c", s.farbe);
+    $(".hf-ava", vorschau).textContent = tkInitialen(name.value.trim()) || "?";
+    $("b", vorschau).textContent = name.value.trim() || "Neuer Kunde";
+    $("small", vorschau).textContent = s.name;
+  };
+  name.addEventListener("input", zeigen);
+  const statusKacheln = hfKacheln(status, STATUS.map((s) => ({ wert: s.id, name: s.name, farbe: s.farbe, punkt: true })), { spalten: 3, klein: true, klasse: "hf-kacheln--status" });
+  status.addEventListener("change", zeigen);
+  zeigen();
+  const felder = [
+    hfEingabe(hfFeld(form, "name"), "person", "#2b5cff"),
+    hfEingabe(hfFeld(form, "telefon"), "kontakt", "#13a06b"),
+    hfEingabe(hfFeld(form, "email"), "mail", "#5b3fd6"),
+    hfEingabe(hfFeld(form, "adresse"), "pin", "#e67c73"),
+  ];
+  const link = hfEingabe(hfFeld(form, "nebenan_link"), "link", "#1e9e5a");
+  $("span", link).textContent = "nebenan.de-Profil (optional)";
+  const kanal = hfKanal(form);
+  const linkZeigen = () => (link.hidden = new FormData(form).get("kanal") !== "nebenan" && !link.querySelector("input").value);
+  form.addEventListener("change", linkZeigen);
+  linkZeigen();
+  const weiter = hfFeld(form, "weiter");
+  $("span", weiter).remove();
+  weiter.querySelector("textarea").placeholder = "Zum Beispiel: Rückruf am Montag, will Angebot für 14 Fenster";
+  return [
+    vorschau,
+    hfKarte("", "", "", felder),
+    hfKarte("Status", "status", "#5b3fd6", [statusKacheln]),
+    hfKarte("Kontakt über", "pfeil", "#d08a00", [kanal, link]),
+    hfKarte("Wie geht's weiter?", "pfeil", "#13a06b", [weiter]),
+  ];
+}
+
+function hfTermin(form) {
+  const ART = { Besichtigung: ["lupe", "#5b3fd6"], "Rückruf": ["kontakt", "#2b5cff"], Sonstiges: ["punkte", "#e67c73"] };
+  const arten = form.querySelector(".chips--wahl");
+  arten.className = "hf-kacheln hf-kacheln--radio";
+  arten.style.setProperty("--n", 3);
+  arten.querySelectorAll("label").forEach((l) => {
+    const [icon, farbe] = ART[l.querySelector("input").value] || ["punkte", "#8a93a6"];
+    l.style.setProperty("--c", farbe);
+    l.className = "";
+    l.insertAdjacentHTML("afterbegin", hfIco(icon, farbe));
+  });
+  form.querySelector(".hinweis")?.remove();
+  const titel = hfEingabe(form.querySelector("[data-eigener-titel]"), "stift", "#e67c73");
+  const dauer = hfChips(form.querySelector("[name=dauer_min]"), "#5b3fd6");
+  const datum = form.querySelector("[name=datum]");
+  const wann = hfWann(datum);
+  const notiz = hfFeld(form, "notiz");
+  $("span", notiz).remove();
+  const abgesagt = form.querySelector("[name=abgesagt]") ? hfSchalter(hfFeld(form, "abgesagt"), "Abgesagt", "Fällt aus", "#e5372f") : null;
+  return [
+    hfKarte("", "", "", [arten, titel, hfKunde(form.querySelector("[name=kunde_id]"), { optional: true })]),
+    hfKarte("Wann?", "wann", "#2b5cff", [...wann, hfEl(`<div class="hf-untertitel">Dauer</div>`), dauer, hfSchalter(form.querySelector(".schalter-zeile"), "Noch nicht fest", "Kunde hat noch nicht zugesagt", "#e67c73")]),
+    hfKarte("Notizen", "notiz", "#13a06b", [notiz]),
+    abgesagt && hfKarte("", "", "", [abgesagt]),
+  ];
+}
+
+function hfAufgabe(form) {
+  const titel = hfFeld(form, "titel");
+  titel.classList.add("hf-grosstext");
+  $("span", titel).remove();
+  titel.querySelector("input").placeholder = "Was ist zu tun?";
+  titel.querySelector("input").classList.add("hf-gross-feld");
+  const wer = hfKacheln(form.querySelector("[name=zustaendig]"), ["Beide", ...PERSONEN].map((n) => ({ wert: n, name: n, ava: hfKurz(n), farbe: hfFarbe(n) })), { spalten: 3 });
+  const h = new Date();
+  const heute = new Date(h.getFullYear(), h.getMonth(), h.getDate());
+  const faellig = hfTag(form.querySelector("[name=faellig]"), { leiste: true, farbe: "#d08a00", schnell: [["Ohne", null], ["Heute", heute], ["Morgen", tagPlus(heute, 1)], ["Samstag", hfNaechster(6)], ["Nächste Woche", hfNaechster(1)]] });
+  return [
+    hfKarte("", "", "", [titel]),
+    hfKarte("Wer?", "person", "#e67c73", [wer]),
+    hfKarte("Bis wann?", "uhr", "#d08a00", faellig),
+    hfKarte("Zu Kunde", "link", "#13a06b", [hfKunde(form.querySelector("[name=kunde_id]"), { optional: true })]),
+  ];
+}
+
+function hfGeldDatum(form) {
+  const h = new Date();
+  const heute = new Date(h.getFullYear(), h.getMonth(), h.getDate());
+  return hfTag(form.querySelector("[name=datum]"), { schnell: [["Heute", heute], ["Gestern", tagPlus(heute, -1)]] });
+}
+
+function hfAusgabe(form) {
+  const KAT = { Putzmittel: ["putz", "#0fa3b1"], Werkzeug: ["werkzeug", "#6a4be0"], Fahrt: ["auto", "#2b5cff"], Werbung: ["werbung", "#e67c73"], Sonstiges: ["punkte", "#8a93a6"] };
+  const betrag = hfBetrag(hfFeld(form, "betrag"), "#e5372f");
+  const datum = hfGeldDatum(form);
+  const kat = form.querySelector("[name=kategorie]");
+  const katKacheln = hfKacheln(kat, [...kat.options].map((o) => ({ wert: o.value, name: o.textContent, icon: (KAT[o.value] || KAT.Sonstiges)[0], farbe: (KAT[o.value] || KAT.Sonstiges)[1] })), { spalten: 3, klein: true });
+  const von = hfKacheln(form.querySelector("[name=bezahlt_von]"), [["Kasse", "Firmengeld"], ...PERSONEN.map((p) => [p, "privat ausgelegt"])].map(([w, u]) => ({ wert: w, name: w, unter: u, farbe: hfFarbe(w) })), { spalten: 3 });
+  const notiz = hfEingabe(hfFeld(form, "notiz"), "stift", "#8a93a6");
+  return [betrag, hfKarte("Wofür?", "notiz", "#e5372f", [katKacheln]), hfKarte("Bezahlt von", "karte", "#151a2e", [von]), hfKarte("Wann?", "wann", "#2b5cff", [...datum, notiz])];
+}
+
+function hfAuszahlung(form) {
+  const betrag = hfBetrag(hfFeld(form, "betrag"), "#151a2e");
+  const datum = hfGeldDatum(form);
+  const an = form.querySelector("[name=an]");
+  const anKacheln = hfKacheln(an, [...an.options].map((o) => ({ wert: o.value, name: o.value === "Beide" ? "Beide" : o.textContent, unter: o.value === "Beide" ? "je die Hälfte" : "", ava: hfKurz(o.value), farbe: hfFarbe(o.value) })), { spalten: 3 });
+  const hinweis = form.querySelector(".hinweis");
+  const notiz = hfEingabe(hfFeld(form, "notiz"), "stift", "#8a93a6");
+  return [betrag, hfKarte("An wen?", "person", "#2b5cff", [anKacheln]), hfKarte("Wann?", "wann", "#2b5cff", [...datum, notiz, hinweis])];
+}
+
+// Wird von oeffneDialog am Handy nach nachOeffnen aufgerufen
+function hFormular(form) {
+  const hat = (name) => form.querySelector(`[name="${name}"]`);
+  const bauen = hat("leistung") ? hfAuftrag : hat("art_wahl") ? hfTermin : hat("status") ? hfKunde_ : hat("zustaendig") ? hfAufgabe : hat("kategorie") ? hfAusgabe : hat("an") && hat("betrag") ? hfAuszahlung : null;
+  if (!bauen) return true;
+  try {
+    const karten = bauen(form).filter(Boolean);
+    const fehler = form.querySelector("[data-dialog-fehler]");
+    karten.forEach((k) => fehler.before(k));
+    // Leere Reihen und Feldgruppen, aus denen alles umgezogen ist, fliegen raus
+    form.querySelectorAll(":scope > .feldreihe, :scope > fieldset").forEach((el) => !el.querySelector("input, select, textarea, button") && el.remove());
+    form.classList.add("hf");
+    form.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  } catch (e) {
+    // Lieber das alte Formular als ein halb umgebautes: oeffneDialog baut es dann ohne Handy-Schicht neu
+    console.error("Handy-Formular", e);
+    return false;
+  }
 }

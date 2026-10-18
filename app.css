@@ -3260,7 +3260,7 @@ a.kachel:active,
 
 /* Handy: Eingaben mit 16 px, sonst zoomt iOS beim Tippen */
 @media (max-width: 899px) {
-  input:not(.tk-betrag__feld):not([type="checkbox"]):not([type="radio"]),
+  input:not(.tk-betrag__feld):not(.hf-gross-feld):not([type="checkbox"]):not([type="radio"]),
   select,
   textarea {
     font-size: 16px !important;
