@@ -560,23 +560,41 @@ const ICONS = {
   sperre: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 8 8 5 8-5"/>',
   haus: '<path d="M4 11.5 12 4.5l8 7"/><path d="M6 10v9.5h12V10"/><path d="M10 19.5v-5h4v5"/>',
+  etikett: '<path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.4 1.4 0 0 1 0 2l-6.3 6.3a1.4 1.4 0 0 1-2 0Z"/><circle cx="8" cy="8" r="1.5"/>',
+  megafon: '<path d="M4 10v4a1 1 0 0 0 1 1h2l6 4V5L7 9H5a1 1 0 0 0-1 1Z"/><path d="M17 9a4 4 0 0 1 0 6"/>',
   web: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.5 3.5 5.3 3.5 8.5s-1.1 6-3.5 8.5c-2.4-2.5-3.5-5.3-3.5-8.5s1.1-6 3.5-8.5Z"/>',
 };
 const badge = (farbe, icon) => `<span class="badge badge--${farbe}" aria-hidden="true"><svg viewBox="0 0 24 24">${ICONS[icon]}</svg></span>`;
 const kartenTitel = (id, farbe, icon, titel) => `<h2 class="karte__titel" id="${id}">${badge(farbe, icon)}<span>${titel}</span></h2>`;
 
-// Kontaktweg: Telefon, E-Mail, Website oder nebenan.de
-const KANAELE = {
+// Kontaktweg: feste Wege + eigene aus den Einstellungen (einstellungen.kanaele)
+const KANAELE_FEST = {
   telefon: { name: "Telefon", farbe: "#2B5CFF", icon: "kontakt" },
   email: { name: "E-Mail", farbe: "#5B3FD6", icon: "mail" },
   website: { name: "Website", farbe: "#D08A00", icon: "web" },
   nebenan: { name: "nebenan.de", farbe: "#1E9E5A", icon: "haus" },
+  kleinanzeigen: { name: "Kleinanzeigen", farbe: "#0F9A8A", icon: "etikett" },
+};
+const KANAELE = { ...KANAELE_FEST };
+const KANAL_FARBEN = ["#E67C73", "#6A4BE0", "#E0457B", "#0FA3B1", "#F2B33D", "#151A2E"];
+const eigeneKanaele = () => {
+  const k = daten.einstellungen?.[0]?.kanaele;
+  return Array.isArray(k) ? k : [];
+};
+// Entfernte eigene Kanäle bleiben bekannt (alte Aufträge), sind aber nicht mehr wählbar
+function kanaeleLaden() {
+  for (const id of Object.keys(KANAELE)) if (!KANAELE_FEST[id]) delete KANAELE[id];
+  for (const e of eigeneKanaele()) KANAELE[e.id] = { name: e.name, farbe: e.farbe || "#6A4BE0", icon: "megafon", eigen: true, aus: !!e.aus };
+}
+const kanaeleWaehlbar = (gewaehlt = null) => {
+  kanaeleLaden();
+  return Object.entries(KANAELE).filter(([id, k]) => !k.aus || id === gewaehlt);
 };
 const kanalName = (kanal) => KANAELE[kanal]?.name || "";
 const kanalMarke = (kanal) => {
   const k = KANAELE[kanal];
   if (!k) return "";
-  return `<span class="kanal-marke kanal-marke--${kanal}" role="img" title="${k.name}" aria-label="Kontakt über ${k.name}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k.icon]}</svg></span>`;
+  return `<span class="kanal-marke kanal-marke--${kanal}" style="--kfarbe:${k.farbe}" role="img" title="${k.name}" aria-label="Kontakt über ${k.name}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k.icon]}</svg></span>`;
 };
 
 // Große Knöpfe für den Kontaktweg (Pflicht)
@@ -584,7 +602,7 @@ function kanalWahl(gewaehlt) {
   return `<fieldset class="kanal-wahl">
     <legend>Kontakt über</legend>
     <div class="kanal-wahl__reihe">
-      ${Object.entries(KANAELE).map(([id, k]) => `<label class="kanal-wahl__knopf">
+      ${kanaeleWaehlbar(gewaehlt).map(([id, k]) => `<label class="kanal-wahl__knopf" style="--c:${k.farbe}">
         <input type="radio" name="kanal" value="${id}"${gewaehlt === id ? " checked" : ""} />
         <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k.icon]}</svg>
         <span>${k.name}</span>
@@ -926,7 +944,7 @@ function kanalAuswertung() {
     zaehl[kanal in KANAELE ? kanal : "ohne"] += 1;
   });
   const gesamt = Object.values(zaehl).reduce((s, n) => s + n, 0);
-  const arten = Object.entries(KANAELE).concat(zaehl.ohne ? [["ohne", OHNE_KANAL]] : []);
+  const arten = Object.entries(KANAELE).filter(([id, k]) => !k.aus || zaehl[id]).concat(zaehl.ohne ? [["ohne", OHNE_KANAL]] : []);
   const teile = arten.map(([id, k]) => ({
     id,
     name: k.name,
@@ -1636,6 +1654,10 @@ function ansichtEinstellungen() {
     </div>
     ${teamKarte()}
     <section class="karte">
+      <div class="karte__kopf">${kartenTitel("t-kanaele", "himmel", "web", "Woher Kunden kommen")}<button class="knopf knopf--klein knopf--voll" type="button" data-aktion="kanal-neu">Kontaktweg hinzufügen</button></div>
+      <ul class="kanal-liste">${kanaeleWaehlbar().map(([kid, k]) => `<li>${kanalMarke(kid)}<span>${esc(k.name)}</span>${k.eigen ? `<button class="knopf knopf--klein knopf--leise" type="button" data-aktion="kanal-weg" data-id="${esc(kid)}">Entfernen</button>` : `<small class="leise">fest</small>`}</li>`).join("")}</ul>
+    </section>
+    <section class="karte">
       <div class="karte__kopf">${kartenTitel("t-push", "violett", "anfrage", "Mitteilungen bei neuen Anfragen")}<button class="knopf knopf--klein${pushAn ? " knopf--leise" : " knopf--voll"}" type="button" data-aktion="push-umschalten">${pushAn ? "Ausschalten" : "Einschalten"}</button></div>
       <p class="leise" style="margin:0">${esc(pushText())} Gilt nur für dieses Gerät – am Handy und am Mac je einmal einschalten.</p>
     </section>
@@ -1831,6 +1853,7 @@ let zeigeBeimRendern = null; // Kennzahl aus #geld?zeige=…: öffnet das Popup 
 
 function render() {
   if (!db) return;
+  kanaeleLaden();
   const { bereich, id, abfrage } = route();
   if (bereich === "kunden" && abfrage.get("status")) {
     zustand.kundenFilter = abfrage.get("status");
@@ -2201,6 +2224,38 @@ async function auftragLoeschen(a) {
 }
 
 // Mitarbeiter anlegen oder umbenennen; beim Umbenennen ziehen Aufträge und Löhne mit
+// Eigenen Kontaktweg anlegen, z. B. eine Werbeaktion
+function dialogKanal() {
+  const frei = KANAL_FARBEN.find((f) => !Object.values(KANAELE).some((k) => k.farbe.toLowerCase() === f.toLowerCase())) || KANAL_FARBEN[0];
+  oeffneDialog({
+    titel: "Neuer Kontaktweg",
+    knopf: "Hinzufügen",
+    felder: `<label class="feld"><span>Name</span><input name="name" required autocomplete="off" maxlength="24" placeholder="z. B. Flyer Märchenviertel" /></label>
+      <fieldset class="feld kanal-farben"><legend>Farbe</legend><div class="kanal-farben__reihe">
+        ${KANAL_FARBEN.map((f) => `<label class="kanal-farben__punkt" style="--c:${f}"><input type="radio" name="farbe" value="${f}"${f === frei ? " checked" : ""} /><span class="visually-hidden">${f}</span></label>`).join("")}
+      </div></fieldset>
+      <p class="hinweis">Taucht dann bei „Kontakt über“ in Auftrag und Kunde auf.</p>`,
+    absenden: async (f) => {
+      const name = (f.name || "").trim();
+      if (!name) throw new Error("Bitte einen Namen eingeben.");
+      const gleich = Object.entries(KANAELE).find(([, k]) => k.name.toLowerCase() === name.toLowerCase());
+      const liste = eigeneKanaele().map((k) => ({ ...k }));
+      if (gleich && !KANAELE[gleich[0]].aus) throw new Error(`„${name}“ gibt es schon.`);
+      if (gleich) liste.find((k) => k.id === gleich[0]).aus = false;
+      else liste.push({ id: `k_${Date.now().toString(36)}`, name, farbe: f.farbe || frei });
+      await aendern("einstellungen", daten.einstellungen[0]?.id ?? 1, { kanaele: liste });
+      zeigeToast(`${name} ist dabei`);
+    },
+  });
+}
+
+async function kanalEntfernen(id) {
+  const k = KANAELE[id];
+  if (!k?.eigen || !confirm(`„${k.name}“ entfernen? Alte Aufträge behalten ihn.`)) return;
+  const liste = eigeneKanaele().map((x) => (x.id === id ? { ...x, aus: true } : x));
+  await aendern("einstellungen", daten.einstellungen[0]?.id ?? 1, { kanaele: liste });
+}
+
 function dialogMitarbeiter(m = {}) {
   oeffneDialog({
     titel: m.id ? `${m.name} umbenennen` : "Mitarbeiter hinzufügen",
@@ -2405,45 +2460,8 @@ function tgTextFuer(betrag, geschaetzt) {
   return `davon Trinkgeld: <strong>${euro(tg)}</strong>${prozent !== null ? ` (${prozent} %)` : ""}`;
 }
 
-const d0 = (a) => Boolean(a.datum);
-function terminStatusChip(a) {
-  let text = "geplant";
-  let klasse = "status--kontakt";
-  if (a.abgesagt) [text, klasse] = ["abgesagt", "status--abgesagt"];
-  else if (a.vorlaeufig) [text, klasse] = ["vorläufig", "status--geplant"];
-  else if (istTermin(a)) [text, klasse] = [d0(a) ? "fest" : "offen", "status--neu"];
-  else if (zahl(a.bekommen) !== null) [text, klasse] = ["erledigt", "status--erledigt"];
-  else if (a.termin_status === "angefragt") [text, klasse] = ["angefragt", "status--termin"];
-  else if (a.termin_status === "bestaetigt") [text, klasse] = ["bestätigt", "status--neu"];
-  else if (a.termin_status === "abgelehnt") [text, klasse] = ["abgelehnt", "status--abgesagt"];
-  return `<span class="status ${klasse}">${text}</span>`;
-}
-
-// Eine Zeile im Infoblock: Icon links, Begriff und Wert rechts (dl > div > dt + dd)
-const tkInfo = (icon, titel, wert) => `<div class="tk-info">
-    <span class="tk-info__icon" aria-hidden="true"><svg viewBox="0 0 24 24">${icon}</svg></span>
-    <dt>${titel}</dt>
-    <dd>${wert}</dd>
-  </div>`;
-
 // Runder Schnellknopf: Kreis mit Icon, Beschriftung darunter
 const tkKreis = (farbe, icon, titel) => `<span class="tk-rund__kreis tk-rund__kreis--${farbe}" aria-hidden="true"><svg viewBox="0 0 24 24">${icon}</svg></span><span class="tk-rund__titel">${titel}</span>`;
-
-// Countdown in der Terminkarte: "heute, in 3 Std.", "morgen", "in 2 Tagen", "vor 3 Tagen"
-function tkCountdown(d) {
-  if (!d) return "";
-  const jetzt = new Date();
-  const tage = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate())) / 86400000);
-  if (tage === 0) {
-    const std = (d - jetzt) / 3600000;
-    if (std >= 1) return `heute, in ${Math.round(std)} Std.`;
-    if (std > 0) return "heute, gleich";
-    return "heute";
-  }
-  if (tage === 1) return "morgen";
-  if (tage === -1) return "gestern";
-  return tage > 0 ? `in ${tage} Tagen` : `vor ${-tage} Tagen`;
-}
 
 // Initialen für den Avatar-Kreis: "Anna Müller" wird "AM"
 const tkInitialen = (name) =>
@@ -2461,17 +2479,73 @@ const tkSchnell = (ok, href, farbe, icon, titel, attr = "") =>
     ? `<a class="tk-rund" href="${esc(href)}"${attr}>${tkKreis(farbe, icon, titel)}</a>`
     : `<span class="tk-rund tk-rund--aus" aria-disabled="true" aria-label="${titel}: keine Angabe" title="${titel}: keine Angabe">${tkKreis("aus", icon, titel)}</span>`;
 
-// Gruppe mit Überschrift; ohne Zeilen gar keine Gruppe
-const tkGruppe = (titel, zeilen) => {
-  const da = zeilen.filter(Boolean);
-  return da.length ? `<section class="tk-gruppe"><h3 class="tk-gruppe__titel">${titel}</h3><dl class="tk-infos">${da.join("")}</dl></section>` : "";
+// ---------- Terminkarte (Design B): Personenkarte, Statusleiste, Kacheln, Erledigt-Pop-up ----------
+const TB_ICON = {
+  route: '<path d="M3 11l19-9-9 19-2-8-8-2z"/>',
+  pfeil: '<path d="m9 18 6-6-6-6"/>',
+  notiz: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>',
+  team: '<path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20"/><circle cx="10" cy="8" r="3.5"/><path d="M20 20v-1.5a3.5 3.5 0 0 0-2.6-3.4M15.5 4.6a3.5 3.5 0 0 1 0 6.8"/>',
+};
+const tbSvg = (pfad) => `<svg viewBox="0 0 24 24" aria-hidden="true">${pfad}</svg>`;
+const fmtTbTag = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "short" });
+const tbDauer = (min) => {
+  const h = Math.floor(min / 60);
+  const r = Math.round(min % 60);
+  return [h && `${h} Std`, r && `${r} min`].filter(Boolean).join(" ") || "0 min";
+};
+// Kurz für enge Kacheln: 1:45 h / 45 min
+const tbDauerKurz = (min) => (min < 60 ? `${Math.round(min)} min` : `${Math.floor(min / 60)}:${String(Math.round(min % 60)).padStart(2, "0")} h`);
+const tbTage = (d) => {
+  const j = new Date();
+  return Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(j.getFullYear(), j.getMonth(), j.getDate())) / 86400000);
 };
 
-function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
+// Stundenlohn pro Person: alles inkl. Trinkgeld ÷ Leute ÷ Stunden
+function stundenlohnProPerson(bekommen, team, min) {
+  if (!min || bekommen === null || !team.length) return null;
+  return Math.round((bekommen / team.length / (min / 60)) * 100) / 100;
+}
+
+// Phase für die Statusleiste: 0 angefragt, 1 geplant, 2 erledigt (Geld fehlt), 3 bezahlt
+function tbPhase(a, d) {
+  if (zahl(a.bekommen) !== null) return 3;
+  if (a.termin_status === "angefragt") return 0;
+  if (d && d < new Date() && !a.vorlaeufig) return 2;
+  return 1;
+}
+
+// Schwarzer Kassenblock nach dem Termin: Betrag, Aufteilung, Stundenlohn
+function tbKasse(a, erfolg) {
+  const b = zahl(a.bekommen);
+  const g = zahl(a.geschaetzt);
+  const team = teamVon(a);
+  const teil = lohnAufteilung({ bekommen: b, team, prozent: prozentVon(a) });
+  const diff = g !== null ? Math.round((b - g) * 100) / 100 : null;
+  const diffText = diff === null ? "" : diff === 0 ? "genau wie geschätzt" : `${diff > 0 ? "+" : "−"}${euro(Math.abs(diff))} ${diff > 0 ? "über" : "unter"} Schätzung`;
+  const teile = [...teil.loehne.map((l) => ({ name: l.name, betrag: l.betrag, farbe: hfFarbe(l.name) })), { name: "Kasse", betrag: teil.kasse, farbe: "#f2b33d" }].filter((t) => t.betrag > 0);
+  const lohn = stundenlohnProPerson(b, team, zahl(a.dauer_echt_min));
+  const tg = trinkgeld(a);
+  return `<section class="tb-kasse tb-breit${erfolg ? " tb-kasse--neu" : ""}" aria-label="Bekommen">
+      <div class="tb-kasse__zeile"><span class="tb-kasse__klein">Bekommen</span><button class="tb-kasse__aendern" type="button" data-tb-eintragen>Ändern</button></div>
+      <p class="tb-kasse__betrag">${euro(b)}</p>
+      ${diffText ? `<p class="tb-kasse__diff${diff > 0 ? " plus" : diff < 0 ? " minus" : ""}">${diffText}</p>` : ""}
+      ${teile.length > 1 ? `<div class="tb-split" aria-hidden="true">${teile.map((t) => `<i style="flex:${t.betrag};background:${t.farbe}"></i>`).join("")}</div>` : ""}
+      <div class="tb-legende">${teile.map((t) => `<span style="--c:${t.farbe}">${esc(t.name)} ${euro(t.betrag)}</span>`).join("")}</div>
+      <div class="tb-stats">
+        <div class="tb-stat tb-stat--haupt"><b>${lohn !== null ? euro(lohn) : "–"}</b><span>pro Stunde &amp; Person</span></div>
+        <div class="tb-stat"><b>${tg ? `+${euro(tg)}` : "–"}</b><span>Trinkgeld</span></div>
+        <div class="tb-stat"><b>${zahl(a.dauer_echt_min) ? tbDauerKurz(a.dauer_echt_min) : "–"}</b><span>gebraucht</span></div>
+      </div>
+    </section>`;
+}
+
+function terminkarteInhalt(a, { erfolg = false } = {}) {
   const k = kundeVon(a.kunde_id);
   const d = a.datum ? new Date(a.datum) : null;
-  const bezahlt = zahl(a.bekommen) !== null;
-  const zukunft = d !== null && d > new Date();
+  const termin = istTermin(a);
+  const aus = Boolean(a.abgesagt) || a.termin_status === "abgelehnt";
+  const phase = tbPhase(a, d);
+  const bezahlt = phase === 3;
   const geschaetzt = zahl(a.geschaetzt);
   const adresse = k?.adresse ? `${k.adresse}, Berlin` : "";
   const karte = `${istIos ? "https://maps.apple.com/?q=" : "https://www.google.com/maps/search/?api=1&query="}${encodeURIComponent(adresse)}`;
@@ -2482,148 +2556,108 @@ function terminkarteInhalt(a, { erfolg = false, bearbeiten = false } = {}) {
   const fensterN = Number(a.fenster_normal || 0);
   const fensterB = Number(a.fenster_boden || 0);
   const stunden = zahl(a.stunden);
-  const besuche = k ? auftraegeVon(k.id).filter((x) => zahl(x.bekommen) !== null) : [];
+  const besuche = k ? auftraegeVon(k.id).filter((x) => zahl(x.bekommen) !== null).length : 0;
   const quote = k ? trinkgeldQuote(auftraegeVon(k.id)) : null;
-  // Uhrzeit von–bis, wenn eine Dauer eingetragen ist
-  const dauerMin = istTermin(a) ? Number(a.dauer_min) || 0 : stunden ? stunden * 60 : 0;
-  const ende = d && dauerMin ? new Date(d.getTime() + dauerMin * 60000) : null;
-  const uhr = d ? `${fmtUhr.format(d)}${ende ? ` – ${fmtUhr.format(ende)}` : ""}` : "";
+  const dauerMin = termin ? Number(a.dauer_min) || 0 : stunden ? stunden * 60 : 0;
 
-  const kopf = `<header class="tk-kopf">
-      <button class="tk-bearbeiten" type="button" data-aktion="auftrag-bearbeiten" data-id="${esc(a.id)}" data-tk-bearbeiten aria-label="${istTermin(a) ? "Termin" : "Auftrag"} bearbeiten">
-        <svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.stift}</svg><span>Bearbeiten</span>
-      </button>
-      <div class="tk-kopf__status">
-        ${terminStatusChip(a)}
-        ${d ? `<span class="tk-countdown">${esc(tkCountdown(d))}</span>` : ""}
-      </div>
-      <p class="tk-wochentag">${d ? esc(fmtWochentag.format(d)) : "Ohne Termin"}</p>
-      <h2 class="tk-datum" id="tk-titel">${d ? esc(fmtTagMonat.format(d)) : "Termin offen"}</h2>
-      ${uhr ? `<p class="tk-uhr">${esc(uhr)}<span> Uhr</span></p>` : ""}
+  const [chipText, chipArt] = aus
+    ? [a.abgesagt ? "Abgesagt" : "Abgelehnt", "rot"]
+    : termin
+      ? [d ? "Termin" : "Termin offen", "blau"]
+      : a.vorlaeufig && !bezahlt
+        ? ["Vorläufig", "gold"]
+        : [["Angefragt", "gold"], ["Geplant", "blau"], ["Geld fehlt", "orange"], ["Bezahlt", "gruen"]][phase];
+
+  const kopf = `<header class="tb-kopf">
+      <span class="tb-chip tb-chip--${chipArt}"><i></i>${chipText}</span>
+      <button class="tb-eckig" type="button" data-aktion="auftrag-bearbeiten" data-id="${esc(a.id)}" data-tk-bearbeiten aria-label="${termin ? "Termin" : "Auftrag"} bearbeiten">${tbSvg(ICONS.stift)}</button>
     </header>`;
 
-  const kunde = k
-    ? `<a class="tk-kunde" href="#kunde/${esc(k.id)}" data-tk-kunde>
-        <span class="tk-avatar" aria-hidden="true">${esc(tkInitialen(k.name))}</span>
-        <span class="tk-kunde__text">
-          <span class="tk-kunde__name">${esc(k.name)}</span>
-          <span class="tk-kunde__meta">
-            ${k.status === "stamm" ? `<span class="tk-stamm">${badge("navy", "kunden")}Stammkunde</span>` : ""}
-            <span>${besuche.length} ${besuche.length === 1 ? "bezahlter Besuch" : "bezahlte Besuche"}${quote !== null ? ` · Ø ${quote} % Trinkgeld` : ""}</span>
-          </span>
-          <span class="tk-kunde__zur">Kundenseite öffnen</span>
-        </span>
-      </a>`
-    : `<p class="tk-kunde tk-kunde--leer">${istTermin(a) ? `${esc(auftragTitel(a))} ohne Kunde` : "Kunde nicht mehr vorhanden"}</p>`;
+  const kontakt = (ok, href, art, icon, titel) =>
+    ok
+      ? `<a class="tb-rund tb-rund--${art}" href="${esc(href)}" aria-label="${titel}">${tbSvg(icon)}</a>`
+      : `<span class="tb-rund tb-rund--aus" aria-label="${titel}: keine Angabe" title="${titel}: keine Angabe">${tbSvg(icon)}</span>`;
+  const meta = [k?.status === "stamm" ? "Stammkunde" : besuche ? "Kunde" : "Neukunde", besuche && `${besuche} ${besuche === 1 ? "Besuch" : "Besuche"}`, quote !== null && `Ø ${quote} % Trinkgeld`].filter(Boolean).join(" · ");
+  const person = k
+    ? `<div class="tb-person">
+        <a class="tb-person__name" href="#kunde/${esc(k.id)}" data-tk-kunde>
+          <span class="tb-person__ava" aria-hidden="true">${esc(tkInitialen(k.name))}</span>
+          <span class="tb-person__text"><h2 id="tk-titel">${esc(k.name)}${tbSvg(TB_ICON.pfeil)}</h2><small>${esc(meta)}</small></span>
+        </a>
+        <div class="tb-person__kontakt">${kontakt(!!tel, `tel:${tel}`, "blau", ICONS.kontakt, "Anrufen")}${kontakt(!!k.email, `mailto:${k.email || ""}`, "lila", ICONS.mail, "Mail schreiben")}</div>
+      </div>`
+    : `<div class="tb-person"><h2 id="tk-titel" class="tb-person__leer">${termin ? esc(auftragTitel(a)) : "Kunde nicht mehr vorhanden"}</h2></div>`;
 
-  // Anrufen, Mail, Route: immer drei Kacheln gleicher Größe
-  const schnell = `<div class="tk-schnell">
-      ${tkSchnell(!!tel, `tel:${tel}`, "blau", ICONS.kontakt, "Anrufen")}
-      ${tkSchnell(!!k?.email, `mailto:${k?.email || ""}`, "violett", ICONS.mail, "Mail")}
-      ${tkSchnell(!!adresse, karte, "gruen", TK_ICON.pin, "Route", ' target="_blank" rel="noopener"')}
-      ${k?.nebenan_link ? tkSchnell(true, nebenanUrl(k.nebenan_link), "nebenan", ICONS.haus, "nebenan.de", ' target="_blank" rel="noopener"') : ""}
-    </div>`;
+  const schritte = termin || aus
+    ? ""
+    : `<ol class="tb-schritte${bezahlt ? " tb-schritte--fertig" : ""}" aria-label="Status">${["Angefragt", "Geplant", "Erledigt", "Bezahlt"]
+        .map((t, i) => `<li class="${i < phase || bezahlt ? "an" : i === phase ? "jetzt" : ""}"${i === phase && !bezahlt ? ' aria-current="step"' : ""}><i></i><span>${t}</span></li>`)
+        .join("")}</ol>`;
 
-  const notizAuftrag = a.notiz
-    ? `<section class="tk-notiz" aria-label="Notizen"><h3 class="tk-gruppe__titel">Notizen</h3><p>${esc(a.notiz)}</p></section>`
-    : "";
-
-  const auftrag = istTermin(a)
-    ? tkGruppe("Termin", [
-        tkInfo(ICONS.termin, "Art", esc(auftragTitel(a))),
-        a.dauer_min && tkInfo(ICONS.uhr, "Dauer", `${Number(a.dauer_min)} Min.`),
-      ])
-    : tkGruppe("Auftrag", [
-    a.leistung && tkInfo(ICONS.aufgabe, "Leistung", esc(a.leistung)),
-    fensterN + fensterB > 0 && tkInfo(TK_ICON.fenster, "Umfang", `${fensterN} normale · ${fensterB} bodentiefe`),
-    stunden !== null && tkInfo(ICONS.uhr, "Dauer", `${esc(String(stunden).replace(".", ","))} Std.`),
-  ]);
-
-  const kontakt = tkGruppe("Kontakt", [
-    k?.adresse && tkInfo(TK_ICON.pin, "Adresse", esc(k.adresse)),
-    k?.telefon && tkInfo(ICONS.kontakt, "Telefon", esc(k.telefon)),
-    k?.email && tkInfo(ICONS.mail, "E-Mail", esc(k.email)),
-    KANAELE[a.kanal] && tkInfo(ICONS.web, "Kontakt über", `${kanalMarke(a.kanal)}${esc(kanalName(a.kanal))}`),
-  ]);
-
-  const verlauf = tkGruppe("Verlauf", [
-    k?.weiter && tkInfo(ICONS.bewegung, "Wie geht's weiter?", esc(k.weiter)),
-    notiz && tkInfo(ICONS.stift, "Letzte Notiz", `${esc(notiz.text)} <small class="leise">· ${esc(fmtDatum.format(new Date(notiz.erstellt)))}</small>`),
-  ]);
-
-  // Vorläufig: oben ein deutlicher Hinweis mit „Fix machen“
-  const vorlaeufig = a.vorlaeufig && !a.abgesagt
-    ? `<section class="tk-vorlaeufig">
-        <p><b>Noch nicht bestätigt.</b> Ungefähr ausgemacht – erst „Fix machen“, wenn der Kunde zugesagt hat.</p>
-        <button class="knopf knopf--voll" type="button" data-aktion="termin-fix" data-id="${esc(a.id)}">Fix machen</button>
-      </section>`
-    : "";
-
-  // Bezahlt-Bereich: eigene Ebene, das Wichtigste auf der Karte
-  let geld;
-  if (istTermin(a)) {
-    geld = "";
-  } else if (bezahlt && !bearbeiten) {
-    const tg = trinkgeld(a);
-    geld = `<section class="tk-geld tk-geld--bezahlt" aria-labelledby="tk-geld-titel">
-      <div class="tk-geld__zeile">
-        <span class="tk-haken${erfolg ? " tk-haken--neu" : ""}" aria-hidden="true"><svg viewBox="0 0 24 24">${TK_ICON.haken}</svg></span>
-        <div class="tk-geld__text">
-          <p class="tk-geld__titel" id="tk-geld-titel">Bezahlt: ${euro(a.bekommen)}</p>
-          <p class="tk-geld__werte">${geschaetzt !== null ? `Geschätzt ${euro(geschaetzt)}` : "Kein Schätzwert"}${tg ? ` · <strong>+${euro(tg)} Trinkgeld</strong>` : ""}</p>
-          <p class="tk-geld__werte">${aufteilungText(lohnAufteilung({ bekommen: a.bekommen, team: teamVon(a), prozent: prozentVon(a) }), a.bekommen)}${zahl(a.dauer_echt_min) ? ` · ${stundenText(a.dauer_echt_min)}` : ""}</p>
-          ${erfolg ? `<p class="tk-geld__ok" role="status">${euro(a.bekommen)} eingetragen</p>` : ""}
-        </div>
-      </div>
-      <button class="knopf knopf--klein tk-aendern" type="button" data-tk-aendern>Betrag ändern</button>
-    </section>`;
+  let wann;
+  if (!d) {
+    wann = `<div class="tb-tile tb-wann tb-breit"><div><span class="tb-mini">${tbSvg(ICONS.uhr)}Wann</span><p class="tb-wann__tag">Noch offen</p><p class="tb-wann__zeit">Kein Datum ausgemacht</p></div></div>`;
   } else {
-    const leise = zukunft && !bezahlt && !bearbeiten;
-    const titel = bearbeiten ? "Betrag ändern" : leise ? "Nach dem Termin eintragen" : "Wirklich bekommen?";
-    const wert = bezahlt ? zahl(a.bekommen) : geschaetzt;
-    const text = wert === null ? "" : String(wert).replace(".", ",");
-    geld = `<section class="tk-geld${leise ? " tk-geld--leise" : ""}" aria-labelledby="tk-geld-titel">
-      <h3 class="tk-geld__titel" id="tk-geld-titel">${titel}</h3>
-      <form class="tk-geld__form" data-tk-form>
-        <div class="tk-vergleich">
-          <div class="tk-vergleich__schaetz">
-            <span class="tk-vergleich__label">Geschätzt</span>
-            <span class="tk-vergleich__wert">${geschaetzt !== null ? esc(euro(geschaetzt)) : "–"}</span>
-          </div>
-          <label class="tk-betrag">
-            <span class="tk-vergleich__label">Wirklich bekommen</span>
-            <span class="tk-betrag__box">
-              <input class="tk-betrag__feld" name="bekommen" type="text" inputmode="decimal" autocomplete="off" value="${esc(text)}" aria-label="Wirklich bekommen in Euro" data-tk-betrag />
-              <span class="tk-betrag__euro" aria-hidden="true">€</span>
-            </span>
-          </label>
-        </div>
-        <p class="tk-tg" data-tk-tg>${tgTextFuer(betragLesen(text), geschaetzt)}</p>
-        <div class="tk-team">
-          <span class="tk-vergleich__label">Wer war dabei?</span>
-          ${teamChips(teamVon(a))}
-        </div>
-        <label class="tk-dauer">
-          <span class="tk-vergleich__label">Wie lange gebraucht?</span>
-          <span class="tk-dauer__box"><input class="eingabe" name="dauer" type="text" inputmode="decimal" autocomplete="off" value="${esc(stundenFeld(dauerVon(a).min))}" aria-label="Dauer in Stunden" data-tk-dauer /><span>Std.</span></span>
-        </label>
-        <p class="tk-teilung" data-tk-teilung>${aufteilungText(lohnAufteilung({ bekommen: betragLesen(text), team: teamVon(a), prozent: prozentVon(a) }), betragLesen(text))}</p>
-        <p class="meldung minus" data-tk-fehler role="alert"></p>
-        <div class="tk-aktionen">
-          ${bearbeiten ? `<button class="knopf knopf--leise" type="button" data-tk-abbrechen>Abbrechen</button>` : ""}
-          <button class="knopf knopf--voll tk-speichern" type="submit">Speichern</button>
-        </div>
-      </form>
-    </section>`;
+    const tage = tbTage(d);
+    const uhr = `${fmtUhr.format(d)} Uhr`;
+    const zeit = bezahlt ? (zahl(a.dauer_echt_min) ? `${tbDauer(a.dauer_echt_min)} gebraucht` : uhr) : `${uhr}${dauerMin ? ` · ca. ${tbDauer(dauerMin)}` : ""}`;
+    const zahlTeil = bezahlt
+      ? tbSvg(TK_ICON.haken)
+      : tage === 0
+        ? `<b class="tb-badge__wort">Heute</b>`
+        : tage > 0
+          ? `<b>${tage}</b><span>${tage === 1 ? "Tag" : "Tage"}</span>`
+          : `<b>${-tage}</b><span>${tage === -1 ? "Tag her" : "Tage her"}</span>`;
+    const art = aus ? " tb-wann--aus" : bezahlt ? " tb-wann--fertig" : phase === 2 ? " tb-wann--offen" : "";
+    wann = `<div class="tb-tile tb-wann tb-breit${art}">
+        <div><span class="tb-mini">${tbSvg(bezahlt ? TK_ICON.haken : ICONS.uhr)}${bezahlt ? "Erledigt" : "Wann"}</span><p class="tb-wann__tag">${esc(fmtTbTag.format(d))}</p><p class="tb-wann__zeit">${esc(zeit)}</p></div>
+        <div class="tb-badge">${zahlTeil}</div>
+      </div>`;
   }
 
-  return `${kopf}
-    ${vorlaeufig}
-    ${kunde}
-    ${schnell}
-    ${notizAuftrag}
-    ${auftrag}${kontakt}${verlauf}
-    ${geld}`;
+  const wo = k?.adresse
+    ? `<div class="tb-tile tb-wo tb-breit">
+        <span class="tb-minikarte" aria-hidden="true"><i></i></span>
+        <div class="tb-text"><span class="tb-mini">Wo</span><p class="tb-wert">${esc(k.adresse)}</p></div>
+        <a class="tb-route" href="${esc(karte)}" target="_blank" rel="noopener" aria-label="Route starten">${tbSvg(TB_ICON.route)}</a>
+      </div>`
+    : "";
+
+  const wasUnter = termin
+    ? a.dauer_min ? `${Number(a.dauer_min)} Min.` : ""
+    : fensterN + fensterB > 0 ? `${fensterN} normal · ${fensterB} bodentief` : stunden !== null ? `${String(stunden).replace(".", ",")} Std.` : "";
+  const was = `<div class="tb-tile${termin ? " tb-breit" : ""}"><span class="tb-mini">${tbSvg(TK_ICON.fenster)}Was</span><p class="tb-wert">${esc(termin ? auftragTitel(a) : a.leistung || "Auftrag")}</p>${wasUnter ? `<p class="tb-unter">${esc(wasUnter)}</p>` : ""}</div>`;
+
+  const team = teamVon(a);
+  const wer = termin
+    ? ""
+    : `<div class="tb-tile"><span class="tb-mini">${tbSvg(TB_ICON.team)}Wer</span><div class="tb-avas">${team.map((n) => `<span style="background:${hfFarbe(n)}">${esc(n.charAt(0))}</span>`).join("")}</div><p class="tb-unter">${esc(team.join(" & "))}</p></div>`;
+
+  const kanal = KANAELE[a.kanal]
+    ? `<div class="tb-tile"><span class="tb-mini">${tbSvg(ICONS[KANAELE[a.kanal].icon] || ICONS.web)}Kam über</span><p class="tb-wert">${esc(kanalName(a.kanal))}</p></div>`
+    : "";
+  const schaetz = `<div class="tb-tile tb-schaetz${kanal ? "" : " tb-breit"}"><span class="tb-mini">${tbSvg(ICONS.geld)}Geschätzt</span><p class="tb-wert tb-wert--gross">${geschaetzt !== null ? `~${esc(euro(geschaetzt))}` : "–"}</p><p class="tb-unter">wird nach dem Termin eingetragen</p></div>`;
+
+  const vorlaeufig = a.vorlaeufig && !aus && !bezahlt
+    ? `<div class="tb-tile tb-vorl tb-breit"><p><b>Noch nicht bestätigt.</b> Erst „Fix machen“, wenn der Kunde zugesagt hat.</p><button class="tb-knopf tb-knopf--gold" type="button" data-aktion="termin-fix" data-id="${esc(a.id)}">Fix machen</button></div>`
+    : "";
+
+  const notizen = [
+    a.notiz && `<div class="tb-tile tb-notiz tb-breit"><span class="tb-mini">${tbSvg(TB_ICON.notiz)}Notiz</span><p class="tb-wert">${esc(a.notiz)}</p></div>`,
+    notiz && `<div class="tb-tile tb-notiz tb-notiz--leise tb-breit"><span class="tb-mini">${tbSvg(ICONS.stift)}Letzte Notiz zum Kunden · ${esc(fmtDatum.format(new Date(notiz.erstellt)))}</span><p class="tb-wert">${esc(notiz.text)}</p></div>`,
+  ].filter(Boolean).join("");
+
+  const kacheln = termin
+    ? [wann, wo, was, notizen]
+    : [wann, vorlaeufig, wo, was, wer, bezahlt ? tbKasse(a, erfolg) : `${schaetz}${kanal}`, notizen];
+
+  const leiste = termin || aus
+    ? ""
+    : bezahlt
+      ? `<div class="tb-leiste"><button class="tb-knopf tb-knopf--leise" type="button" data-aktion="auftrag-neu" data-kunde="${esc(a.kunde_id || "")}" data-tk-schliesst>${tbSvg(ICONS.termin)}Nächsten Termin planen</button></div>`
+      : `<div class="tb-leiste"><button class="tb-knopf" type="button" data-tb-eintragen>${tbSvg(TK_ICON.haken)}Erledigt &amp; Geld eintragen</button></div>`;
+
+  return `<div class="tb">${kopf}${person}${schritte}<div class="tb-grid">${kacheln.join("")}</div>${leiste}</div>`;
 }
 
 // Inhalt neu zeichnen; die Karte selbst bleibt offen
@@ -2634,77 +2668,141 @@ function terminkarteZeichnen(optionen = {}) {
   return a;
 }
 
-// Das Betragsfeld nur am Computer gleich fokussieren; am Handy bleibt die Tastatur zu
-function betragFokus() {
-  const feld = $("[data-tk-betrag]", terminkarte);
-  if (!feld || istHandy()) return;
-  feld.focus({ preventScroll: true });
-  feld.select();
-}
-
 function oeffneTerminkarte(id) {
   terminkarteId = id;
   if (!terminkarteZeichnen()) return;
   if (!terminkarte.open) terminkarte.showModal();
-  betragFokus();
 }
 
 terminkarte.addEventListener("click", (e) => {
   const ziel = e.target;
   // Schließen, Kundenseite oder Bearbeiten: die Karte geht zu, der Rest läuft über die Bedienung weiter
   if (ziel.closest("[data-tk-bearbeiten]")) zurueckZurKarte = terminkarteId;
-  if (ziel === terminkarte || ziel.closest("[data-tk-zu], [data-tk-kunde], [data-tk-bearbeiten]")) {
+  if (ziel === terminkarte || ziel.closest("[data-tk-zu], [data-tk-kunde], [data-tk-bearbeiten], [data-tk-schliesst]")) {
     terminkarte.close();
     return;
   }
-  if (ziel.closest("[data-tk-aendern]")) {
-    terminkarteZeichnen({ bearbeiten: true });
-    betragFokus();
-    return;
-  }
-  if (ziel.closest("[data-tk-abbrechen]")) terminkarteZeichnen();
+  if (ziel.closest("[data-tb-eintragen]")) oeffneEintragen();
 });
 
-terminkarte.addEventListener("input", (e) => {
-  const form = e.target.closest("[data-tk-form]");
-  if (!form) return;
-  const a = daten.auftraege.find((x) => x.id === terminkarteId);
-  const betrag = betragLesen($("[data-tk-betrag]", form).value);
-  $("[data-tk-tg]", form).innerHTML = tgTextFuer(betrag, zahl(a?.geschaetzt));
-  $("[data-tk-teilung]", form).innerHTML = aufteilungText(lohnAufteilung({ bekommen: betrag, team: teamAusForm(form), prozent: prozentVon(a || {}) }), betrag);
-  $("[data-tk-fehler]", form).textContent = "";
-});
+// Pop-up „Erledigt & Geld eintragen“: Betrag, wer dabei war, wie lange
+let tbPop = null;
 
-terminkarte.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const form = e.target;
+function oeffneEintragen() {
   const a = daten.auftraege.find((x) => x.id === terminkarteId);
   if (!a) return;
-  const feld = $("[data-tk-betrag]", form);
-  const betrag = betragLesen(feld.value);
-  if (betrag === null) {
-    $("[data-tk-fehler]", form).textContent = "Bitte eine Zahl eingeben, zum Beispiel 34 oder 34,50.";
-    feld.focus();
-    return;
+  if (!tbPop) {
+    tbPop = document.createElement("dialog");
+    tbPop.className = "tb-pop";
+    tbPop.setAttribute("aria-label", "Geld eintragen");
+    document.body.append(tbPop);
+    tbPopEreignisse();
   }
-  const knopf = form.querySelector("[type=submit]");
-  knopf.disabled = true;
-  try {
-    const warSchonBezahlt = zahl(a.bekommen) !== null;
+  const k = kundeVon(a.kunde_id);
+  const d = a.datum ? new Date(a.datum) : null;
+  const g = zahl(a.geschaetzt);
+  const b = zahl(a.bekommen);
+  const start = b ?? g;
+  const min = Math.max(15, Math.round((zahl(a.dauer_echt_min) || dauerVon(a).min) / 15) * 15);
+  const schnell = g !== null && g > 0 ? [g - 10, g, g + 10, g + 20].filter((x) => x > 0).map((x) => Math.round(x * 100) / 100) : [];
+  tbPop.innerHTML = `<form class="tb-pop__blatt" data-tb-form novalidate>
+      <div class="tb-pop__griff" aria-hidden="true"></div>
+      <h3>${b !== null ? "Betrag ändern" : "Termin erledigt"}</h3>
+      <p class="tb-pop__sub">${esc([k?.name, d && fmtTbTag.format(d), g !== null && `geschätzt ~${euro(g)}`].filter(Boolean).join(" · "))}</p>
+      <label class="tb-feld" for="tb-betrag">Wie viel habt ihr bekommen? <em>mit Trinkgeld</em></label>
+      <span class="tb-geld"><input id="tb-betrag" name="bekommen" type="text" inputmode="decimal" autocomplete="off" value="${start === null ? "" : esc(String(start).replace(".", ","))}" data-tk-betrag /><span aria-hidden="true">€</span></span>
+      ${schnell.length ? `<div class="tb-schnell">${schnell.map((x) => `<button type="button" data-tb-betrag="${x}">${euro(x)}</button>`).join("")}</div>` : ""}
+      <p class="tb-hinweis" data-tk-tg></p>
+      <p class="tb-feld">Wer war dabei?</p>
+      ${teamChips(teamVon(a))}
+      <p class="tb-feld">Wie lange hat's gedauert?</p>
+      <div class="tb-dauer">
+        <button type="button" data-tb-dauer="-15" aria-label="15 Minuten weniger">−</button>
+        <output data-tb-min="${min}" aria-live="polite">${tbDauer(min)}</output>
+        <button type="button" data-tb-dauer="15" aria-label="15 Minuten mehr">+</button>
+      </div>
+      <div class="tb-vorschau" data-tb-vorschau></div>
+      <p class="meldung minus" data-tk-fehler role="alert"></p>
+      <button class="tb-knopf tb-knopf--gruen" type="submit">${tbSvg(TK_ICON.haken)}Speichern</button>
+      <button class="tb-knopf tb-knopf--text" type="button" data-tb-zu>Abbrechen</button>
+    </form>`;
+  tbVorschau();
+  tbPop.showModal();
+}
+
+// Live: Trinkgeld, Stundenlohn pro Person und Aufteilung, während man tippt
+function tbVorschau() {
+  const a = daten.auftraege.find((x) => x.id === terminkarteId);
+  const form = $("[data-tb-form]", tbPop);
+  if (!a || !form) return;
+  const roh = $("[data-tk-betrag]", form).value;
+  const betrag = betragLesen(roh);
+  const team = teamAusForm(form);
+  const min = Number($("[data-tb-min]", form).dataset.tbMin);
+  form.querySelectorAll("[data-tb-betrag]").forEach((x) => x.classList.toggle("an", betrag !== null && Number(x.dataset.tbBetrag) === betrag));
+  $("[data-tk-tg]", form).innerHTML = tgTextFuer(betrag, zahl(a.geschaetzt));
+  const lohn = stundenlohnProPerson(betrag, team, min);
+  $("[data-tb-vorschau]", form).innerHTML = lohn === null
+    ? ""
+    : `<b>${euro(lohn)}</b> pro Stunde &amp; Person<small>${aufteilungText(lohnAufteilung({ bekommen: betrag, team, prozent: prozentVon(a) }), betrag)}</small>`;
+  $("[data-tk-fehler]", form).textContent = "";
+}
+
+function tbPopEreignisse() {
+  tbPop.addEventListener("click", (e) => {
+    const t = e.target;
+    if (t === tbPop || t.closest("[data-tb-zu]")) return tbPop.close();
+    const b = t.closest("[data-tb-betrag]");
+    if (b) {
+      $("[data-tk-betrag]", tbPop).value = b.dataset.tbBetrag.replace(".", ",");
+      return tbVorschau();
+    }
+    const d = t.closest("[data-tb-dauer]");
+    if (d) {
+      const out = $("[data-tb-min]", tbPop);
+      const m = Math.max(15, Math.min(720, Number(out.dataset.tbMin) + Number(d.dataset.tbDauer)));
+      out.dataset.tbMin = m;
+      out.textContent = tbDauer(m);
+      tbVorschau();
+    }
+  });
+  tbPop.addEventListener("input", tbVorschau);
+  tbPop.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const a = daten.auftraege.find((x) => x.id === terminkarteId);
+    if (!a) return;
+    const feld = $("[data-tk-betrag]", form);
+    const betrag = betragLesen(feld.value);
+    if (betrag === null) {
+      $("[data-tk-fehler]", form).textContent = "Bitte eine Zahl eingeben, zum Beispiel 34 oder 34,50.";
+      feld.focus();
+      return;
+    }
     const team = teamAusForm(form);
-    const dauer = minutenAus($("[data-tk-dauer]", form)?.value);
-    await aendern("auftraege", a.id, { bekommen: betrag, team, dauer_echt_min: dauer });
-    await lohnBuchen({ ...a, bekommen: betrag, team });
-    // Verlauf und Stammkunden-Status nur beim ersten Eintrag, bei einer Korrektur nicht noch einmal
-    if (!warSchonBezahlt) await nachBezahlung(a.kunde_id, { ...a, bekommen: betrag });
-    terminkarteZeichnen({ erfolg: true });
-    $("[data-tk-aendern]", terminkarte)?.focus();
-    render();
-  } catch {
-    // Der Fehler steht schon im Toast (speichern)
-    knopf.disabled = false;
-  }
-});
+    if (!team.length) {
+      $("[data-tk-fehler]", form).textContent = "Bitte ankreuzen, wer dabei war.";
+      return;
+    }
+    const knopf = form.querySelector("[type=submit]");
+    knopf.disabled = true;
+    try {
+      const warSchonBezahlt = zahl(a.bekommen) !== null;
+      const dauer = Number($("[data-tb-min]", form).dataset.tbMin);
+      await aendern("auftraege", a.id, { bekommen: betrag, team, dauer_echt_min: dauer });
+      await lohnBuchen({ ...a, bekommen: betrag, team });
+      // Verlauf und Stammkunden-Status nur beim ersten Eintrag, bei einer Korrektur nicht noch einmal
+      if (!warSchonBezahlt) await nachBezahlung(a.kunde_id, { ...a, bekommen: betrag });
+      tbPop.close();
+      terminkarteZeichnen({ erfolg: true });
+      zeigeToast(`${euro(betrag)} eingetragen`);
+      render();
+    } catch {
+      // Der Fehler steht schon im Toast (speichern)
+      knopf.disabled = false;
+    }
+  });
+}
 
 // Wie die anderen Dialoge: solange die Karte offen ist, wird die Seite nicht unter ihr neu gezeichnet
 terminkarte.addEventListener("close", () => wartetAufRender && render());
@@ -2948,6 +3046,10 @@ document.addEventListener("click", async (event) => {
       return oeffneDiagramm(wert);
     case "mitarbeiter-neu":
       return dialogMitarbeiter();
+    case "kanal-neu":
+      return dialogKanal();
+    case "kanal-weg":
+      return kanalEntfernen(id);
     case "mitarbeiter-umbenennen":
       return dialogMitarbeiter(finden("mitarbeiter"));
     case "mitarbeiter-archivieren": {

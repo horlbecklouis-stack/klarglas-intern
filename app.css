@@ -3862,3 +3862,17 @@ a.kachel:active,
 .person-kopf h1 { margin: 0; }
 .person-kopf__avatar { width: 56px; height: 56px; }
 .person-kacheln { margin-bottom: 1rem; }
+
+/* Eigene Kontaktwege */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.kanal-liste { display: grid; gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
+.kanal-liste li { display: flex; align-items: center; gap: 0.2rem; min-height: 40px; padding: 0.25rem 0; border-bottom: 1px solid var(--border); }
+.kanal-liste li:last-child { border-bottom: 0; }
+.kanal-liste li > span:nth-child(2) { flex: 1; font-weight: 600; }
+.kanal-farben { border: 0; margin: 0; padding: 0; }
+.kanal-farben legend { margin-bottom: 0.4rem; font-weight: 600; font-size: 0.875rem; }
+.kanal-farben__reihe { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.kanal-farben__punkt { position: relative; width: 38px; height: 38px; border-radius: 50%; background: var(--c); cursor: pointer; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35); }
+.kanal-farben__punkt input { position: absolute; opacity: 0; pointer-events: none; }
+.kanal-farben__punkt:has(input:checked) { outline: 3px solid var(--c); outline-offset: 3px; }
+.kanal-farben__punkt:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 3px; }

@@ -860,6 +860,20 @@ function hEinstellungen() {
       zahlFeld("anteil_prozent", "Anteil pro Kopf", standardAnteil(), "%", "1"),
       hZeile({ href: "#team", titel: "Team & Mitarbeiter", rechts: `<span class="h-leise">${2 + aktiveMitarbeiter().length}</span>` }),
     ].join(""), { fuss: "So viel nimmt jeder, der mitarbeitet, bar mit. Seid ihr beide dabei, geht alles in die Kasse." })}
+    <section class="h-abschnitt">
+      <div class="h-abschnitt__kopf"><h2>Woher Kunden kommen</h2></div>
+      <div class="h-gruppe">
+        ${kanaeleWaehlbar().map(([kid, k]) => hZeile({
+          links: `<span class="h-ico" style="--c:${k.farbe}" aria-hidden="true"><svg viewBox="0 0 24 24">${ICONS[k.icon]}</svg></span>`,
+          titel: esc(k.name),
+          rechts: k.eigen ? `<button class="h-link h-minus" type="button" data-aktion="kanal-weg" data-id="${esc(kid)}">Entfernen</button>` : `<span class="h-leise">fest</span>`,
+          chevron: false,
+          inset: 56,
+        })).join("")}
+        <button class="h-neu" type="button" data-aktion="kanal-neu">${hIcon(H_ICON.plus)}Kontaktweg hinzufügen</button>
+      </div>
+      <p class="h-fuss">Z. B. eine Flyer- oder Werbeaktion. Taucht dann bei „Kontakt über“ auf.</p>
+    </section>
     ${hAbschnitt("Termine", hZeile({ href: "#zeiten", titel: "Wann wir können", unter: "Öffnungszeiten, Dauer, Kalender, Blocker" }))}
     ${hAbschnitt("Mitteilungen", `<div class="h-zeile h-zeile--schalter">
         <span class="h-zeile__text"><span class="h-zeile__titel">Bei neuen Anfragen</span><span class="h-zeile__unter">${esc(pushText())}</span></span>
@@ -878,7 +892,7 @@ function hTeam() {
     const z = personZahlen(name);
     return hZeile({
       href: `#mitarbeiter/${encodeURIComponent(name)}`,
-      links: hAvatar(name),
+      links: `<span class="h-ava h-ava--farbe" style="--c:${hfFarbe(name)}" aria-hidden="true">${esc(tkInitialen(name) || "?")}</span>`,
       titel: esc(name),
       unter: `${rolle} · ${z.einsaetze.length} ${z.einsaetze.length === 1 ? "Einsatz" : "Einsätze"}`,
       rechts: euro(z.lohn),
@@ -898,7 +912,93 @@ function hTeam() {
     </section>`;
 }
 
-const hMitarbeiter = (id) => `${hKopf({ titel: decodeURIComponent(id || ""), zurueck: "#team", zurueckText: "Team", nurLeiste: true })}<div class="h-alt">${ansichtMitarbeiter(id)}</div>`;
+// Seite pro Person, im gleichen Look wie die Kundenseite
+function hMitarbeiter(roh) {
+  const name = decodeURIComponent(roh || "");
+  const m = daten.mitarbeiter.find((x) => x.name === name);
+  const chef = PERSONEN.includes(name);
+  if (!m && !chef && !daten.auszahlungen.some((x) => x.an === name)) {
+    return `${hKopf({ titel: "Team", zurueck: "#team", zurueckText: "Team" })}<p class="h-leer">Diese Person gibt es nicht (mehr).</p>`;
+  }
+  const farbe = hfFarbe(name);
+  const z = zustand;
+  const zr = aktuellerZeitraum();
+  const g = zeitraumGrenzen(zr, z.geldStichtag);
+  const jetzt = personZahlen(name, g.von, g.bis);
+  const gesamt = personZahlen(name);
+  const reihe = gesamt.einsaetze;
+  const erster = reihe[reihe.length - 1];
+  const { untertitel, punkte } = zeitreihe(zr, z.geldStichtag);
+  const balken = punkte.map((p) => ({ ...p, wert: Math.round(personZahlen(name, p.von, p.bis).lohn * 100) / 100 }));
+  const aktiv = H.balken !== null && H.balken < balken.length ? H.balken : null;
+  const rolle = chef ? "Chef" : m?.aktiv === false ? "Archiviert" : "Mitarbeiter";
+
+  const knoepfe = m ? `<div class="h-doppel h-person-knoepfe">
+      <button class="h-pill" type="button" data-aktion="mitarbeiter-umbenennen" data-id="${esc(m.id)}">${hIcon(H_ICON.person)}Umbenennen</button>
+      <button class="h-pill" type="button" data-aktion="mitarbeiter-archivieren" data-id="${esc(m.id)}">${m.aktiv === false ? "Zurückholen" : "Archivieren"}</button>
+    </div>` : "";
+
+  const kz = (titel, wert, f, icon) => `<div class="h-kz__kachel" style="--c:${f}"><i aria-hidden="true"><svg viewBox="0 0 24 24">${icon}</svg></i><b>${wert}</b><small>${titel}</small></div>`;
+
+  const zeilen = reihe.map((a) => {
+    const d = dauerVon(a);
+    const mit = teamVon(a).filter((n) => n !== name);
+    return hZeile({
+      klasse: "h-zeile--zeit",
+      style: `--c:${farbe}`,
+      ziel: `data-aktion="termin-karte" data-id="${esc(a.id)}"`,
+      links: hDatum(a.datum || a.erstellt),
+      titel: esc(auftragName(a)),
+      unter: `${d.geschaetzt ? "ca. " : ""}${stundenText(d.min)} · ${mit.length ? `mit ${esc(mit.join(", "))}` : "allein"}`,
+      rechts: `<b>${euro(lohnFuer(name, a))}</b>`,
+      inset: 64,
+    });
+  }).join("");
+
+  return `
+    <section class="h-held h-held--person" style="--c:${farbe}">
+    ${hKopf({
+      titel: name,
+      zurueck: "#team",
+      zurueckText: "Team",
+      klasse: "h-kopf--kontakt",
+      ueber: `<span class="h-ava h-ava--farbe h-ava--gross" style="--c:${farbe}" aria-hidden="true">${esc(tkInitialen(name) || "?")}</span>`,
+      unter: `<span class="h-leise">${rolle}${erster ? ` · seit ${esc(fmtDatum.format(auftragDatum(erster)))}` : ""}</span>`,
+    })}
+      ${knoepfe}
+    </section>
+    <div class="h-stats">
+      <div style="--c:${farbe}"><b>${euro(gesamt.lohn)}</b><small>bekommen</small></div>
+      <div style="--c:#2B5CFF"><b>${reihe.length}</b><small>${reihe.length === 1 ? "Einsatz" : "Einsätze"}</small></div>
+      <div style="--c:#13A06B"><b>${euroOder(gesamt.proStunde)}</b><small>pro Stunde</small></div>
+    </div>
+    ${chef ? `<p class="h-fuss">Bei Chefs zählt hier nur der Lohn aus Aufträgen ohne den anderen, nicht der 50/50-Anteil.</p>` : ""}
+
+    ${zeitraumWahl(g)}
+    <section class="h-chart" aria-label="Lohn" style="--c:${farbe}">
+      <p class="h-chart__wert">${euro(aktiv !== null ? balken[aktiv].wert : jetzt.lohn)}</p>
+      <p class="h-chart__klein">Lohn · ${esc(aktiv !== null ? balken[aktiv].titel : g.label)}</p>
+      ${hBalken(balken, aktiv)}
+      <p class="h-chart__hinweis">${esc(untertitel)}${aktiv !== null ? ` · <button class="h-link" type="button" data-h="balken-weg">Zurück zur Summe</button>` : " · Balken antippen"}</p>
+    </section>
+
+    <section class="h-abschnitt">
+      <div class="h-abschnitt__kopf"><h2><span class="h-ico" style="--c:#6A4BE0" aria-hidden="true"><svg viewBox="0 0 24 24">${H_ICON.balken}</svg></span>Zahlen</h2><span class="h-leise">${esc(g.label)}</span></div>
+      <div class="h-kz">
+        ${kz("Stunden", jetzt.minuten ? stundenText(jetzt.minuten) : "–", "#2B5CFF", H_ICON.uhr)}
+        ${kz("Einsätze", String(jetzt.einsaetze.length), "#151a2e", H_ICON.haken)}
+        ${kz("Ø Stunde", euroOder(jetzt.proStunde), "#13A06B", H_ICON.euro)}
+        ${kz("Ø Einsatz", euroOder(jetzt.proAuftrag), "#6A4BE0", H_ICON.auftrag)}
+        ${kz("Umsatz dabei", euro(jetzt.umsatz), "#F2B33D", H_ICON.kasse)}
+        ${kz("Anteil", jetzt.umsatz ? `${Math.round((jetzt.lohn / jetzt.umsatz) * 100)} %` : "–", "#E67C73", H_ICON.prozent)}
+      </div>
+    </section>
+
+    <section class="h-abschnitt">
+      <div class="h-abschnitt__kopf"><h2><span class="h-ico" style="--c:#2B5CFF" aria-hidden="true"><svg viewBox="0 0 24 24">${H_ICON.termin}</svg></span>Einsätze</h2><span class="h-leise">seit Start</span></div>
+      ${zeilen ? `<div class="h-gruppe h-gruppe--zeit">${zeilen}</div>` : `<p class="h-leer">Noch keine bezahlten Einsätze.</p>`}
+    </section>`;
+}
 const hZeiten = () => `${hKopf({ titel: "Wann wir können", zurueck: "#einstellungen", zurueckText: "Zurück", nurLeiste: true })}<div class="h-alt">${ansichtZeiten()}</div>`;
 
 const HANDY = {
