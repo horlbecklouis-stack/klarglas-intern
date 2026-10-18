@@ -2140,7 +2140,7 @@ function dialogAuftrag(a = {}, kundeId = null) {
       if (a.id) {
         gespeichert = await aendern("auftraege", a.id, zeile);
         if (zahl(a.bekommen) === null && zeile.bekommen !== null) await nachBezahlung(zeile.kunde_id, zeile);
-        else if (zeile.datum && (zeile.datum !== a.datum || zeile.vorlaeufig !== Boolean(a.vorlaeufig))) await statusNachTermin(zeile.kunde_id, zeile);
+        else if (zeile.datum && (!gleicheZeit(zeile.datum, a.datum) || zeile.vorlaeufig !== Boolean(a.vorlaeufig))) await statusNachTermin(zeile.kunde_id, zeile);
       } else {
         gespeichert = await neu("auftraege", zeile);
         if (zeile.bekommen !== null) await nachBezahlung(zeile.kunde_id, zeile);
@@ -2162,10 +2162,14 @@ function vorlaeufigSchalter(a) {
   </label>`;
 }
 
+// Gleicher Zeitpunkt, egal wie das Datum geschrieben ist (DB: +00:00, Formular: Z)
+const gleicheZeit = (x, y) => (x ? new Date(x).getTime() : null) === (y ? new Date(y).getTime() : null);
+
 // Kunde rückt mit einem Termin weiter: vorläufig → „Termin geplant“, fest → „Termin steht“
 async function statusNachTermin(kundeId, zeile) {
   const k = kundeVon(kundeId);
-  if (!k || !zeile.datum || zeile.abgesagt) return;
+  // Bezahlte oder vergangene Termine schieben niemanden mehr zurück
+  if (!k || !zeile.datum || zeile.abgesagt || zahl(zeile.bekommen) !== null || new Date(zeile.datum) < new Date()) return;
   const ziel = zeile.vorlaeufig ? "geplant" : "termin";
   const darf = zeile.vorlaeufig ? ["neu", "kontakt", "erledigt", "abgesagt"] : ["neu", "kontakt", "geplant", "erledigt", "abgesagt"];
   if (k.status === ziel || !darf.includes(k.status)) return;
@@ -2267,7 +2271,7 @@ function dialogTermin(a = {}, kundeId = null) {
         gespeichert = await neu("auftraege", zeile);
         if (zeile.kunde_id) await notiz(zeile.kunde_id, `${titel} am ${fmtTag.format(new Date(zeile.datum))}, ${fmtUhr.format(new Date(zeile.datum))} Uhr eingetragen${zeile.vorlaeufig ? " (vorläufig)" : ""}`);
       }
-      if (zeile.kunde_id && (!a.id || zeile.datum !== a.datum || zeile.vorlaeufig !== Boolean(a.vorlaeufig))) await statusNachTermin(zeile.kunde_id, zeile);
+      if (zeile.kunde_id && (!a.id || !gleicheZeit(zeile.datum, a.datum) || zeile.vorlaeufig !== Boolean(a.vorlaeufig))) await statusNachTermin(zeile.kunde_id, zeile);
       kalenderAbgleichen(gespeichert?.id || a.id);
     },
     entfernen: a.id ? () => auftragLoeschen(a) : null,
