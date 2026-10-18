@@ -13,8 +13,8 @@
     <link rel="icon" href="icon.svg?v=3" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icon-180.png?v=3" />
     <link rel="preload" href="figtree-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="app.css?v=14" />
-    <link rel="stylesheet" href="handy.css?v=14" />
+    <link rel="stylesheet" href="app.css?v=15" />
+    <link rel="stylesheet" href="handy.css?v=15" />
   </head>
   <body>
     <!-- Handy: Lade-Animation, Abzieher wischt die Scheibe frei -->
@@ -206,15 +206,15 @@
           <span class="h-ava h-ava--mittel" data-h-panel-ava></span>
           <div><p class="h-panel__name" data-h-panel-name></p><p class="h-panel__unter">Klar Glas intern</p></div>
         </div>
-        <div class="h-gruppe">
-          <a class="h-panel__zeile" href="#team"><span class="h-panel__icon h-panel__icon--blau"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-6 6.5-6s5.9 2.4 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .7 3.2 2.9 3.5 6"/></svg></span>Team</a>
-          <a class="h-panel__zeile" href="#einstellungen"><span class="h-panel__icon h-panel__icon--grau"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg></span>Einstellungen</a>
-          <a class="h-panel__zeile" href="#zeiten"><span class="h-panel__icon h-panel__icon--orange"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg></span>Wann wir können</a>
-          <button class="h-panel__zeile" type="button" data-h="push"><span class="h-panel__icon h-panel__icon--rot"><svg viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/></svg></span>Mitteilungen<span class="h-schalter h-schalter--klein" role="switch" aria-checked="false" data-h-panel-push><span></span></span></button>
+        <div class="h-kacheln">
+          <a class="h-kachel" href="#team" style="--c:#2B5CFF"><span class="h-kachel__ico"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-6 6.5-6s5.9 2.4 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .7 3.2 2.9 3.5 6"/></svg></span>Team</a>
+          <a class="h-kachel" href="#einstellungen" style="--c:#6A4BE0"><span class="h-kachel__ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg></span>Einstellungen</a>
+          <a class="h-kachel" href="#zeiten" style="--c:#F2B33D"><span class="h-kachel__ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg></span>Wann wir können</a>
+          <button class="h-kachel" type="button" data-h="push" style="--c:#E67C73"><span class="h-kachel__ico"><svg viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/></svg></span><span class="h-kachel__zeile">Mitteilungen<span class="h-schalter h-schalter--klein" role="switch" aria-checked="false" data-h-panel-push><span></span></span></span></button>
         </div>
-        <div class="h-gruppe">
-          <button class="h-panel__zeile" type="button" data-h="passwort" data-h-panel-passwort hidden><span class="h-panel__icon h-panel__icon--grau"><svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg></span>Passwort ändern</button>
-          <button class="h-panel__zeile h-panel__zeile--rot" type="button" data-h="abmelden" data-h-panel-abmelden hidden>Abmelden</button>
+        <div class="h-panel__unten">
+          <button class="h-panel__knopf" type="button" data-h="passwort" data-h-panel-passwort hidden><svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>Passwort ändern</button>
+          <button class="h-panel__knopf h-panel__knopf--rot" type="button" data-h="abmelden" data-h-panel-abmelden hidden>Abmelden</button>
         </div>
         <span class="h-panel__griff" aria-hidden="true"></span>
       </div>
@@ -222,7 +222,7 @@
 
     <script src="config.js?v=11"></script>
     <script src="supabase.js"></script>
-    <script src="handy.js?v=14"></script>
-    <script src="app.js?v=14"></script>
+    <script src="handy.js?v=15"></script>
+    <script src="app.js?v=15"></script>
   </body>
 </html>

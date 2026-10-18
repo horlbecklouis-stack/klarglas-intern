@@ -2345,3 +2345,1114 @@ body.handy :is(.knopf, .tk-rund, .chip):active {
   border-radius: 50%;
   background: #e5372f;
 }
+
+/* =====================================================================
+   Design D: Glas + Farbe (v15)
+   Bunter Wolken-Hintergrund, weißes Milchglas, satte Farbkacheln
+   ===================================================================== */
+
+body.handy {
+  --h-grund: #f3f5fb;
+  --h-lukas: #13a06b;
+  --d-glas: rgba(255, 255, 255, 0.6);
+  --d-blur: blur(22px) saturate(180%);
+  --d-kante: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  --d-schatten: 0 10px 26px -16px rgba(11, 21, 48, 0.32);
+  --d-glanz: linear-gradient(155deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0) 44%);
+  --d-feld: rgba(11, 21, 48, 0.05);
+  --h-trenner: rgba(11, 21, 48, 0.08);
+  background: #f3f5fb;
+}
+
+/* Wolken liegen fest hinter allem (iOS kann kein background-attachment: fixed) */
+body.handy::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 34% at 0% 4%, rgba(43, 92, 255, 0.34), transparent 70%),
+    radial-gradient(55% 30% at 100% 22%, rgba(230, 124, 115, 0.32), transparent 70%),
+    radial-gradient(60% 32% at 6% 60%, rgba(19, 160, 107, 0.22), transparent 70%),
+    radial-gradient(55% 32% at 100% 82%, rgba(242, 179, 61, 0.28), transparent 70%),
+    radial-gradient(50% 26% at 40% 102%, rgba(106, 75, 224, 0.22), transparent 70%),
+    #f3f5fb;
+}
+
+/* ---------- Milchglas für alles Neutrale ---------- */
+body.handy :where(.h-gruppe, .h-chart, .h-leer--klein, .h-suche, .h-stats > div, .h-panel__knopf) {
+  background: var(--d-glas);
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), var(--d-schatten);
+}
+
+body.handy .h-gruppe {
+  border-radius: 22px;
+}
+
+body.handy :is(.h-aufgabe, .h-neu, .h-textfeld, .h-panel__zeile) {
+  background: transparent;
+}
+
+/* Wischzeilen brauchen eine feste Farbe, sonst schimmern die Knöpfe durch */
+body.handy .h-wisch__vorne {
+  background: color-mix(in srgb, var(--tint, #ffffff) 8%, #fbfcff);
+}
+
+body.handy .h-abschnitt__kopf h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 19px;
+  color: #0b1530;
+}
+
+body.handy .h-titel {
+  color: #0b1530;
+}
+
+/* Glänzendes Farb-Icon vor Abschnittstiteln */
+.h-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: var(--d-glanz), var(--c);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 5px 12px -5px var(--c);
+}
+
+.h-ico svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Abschnitte als farbiges Glas */
+body.handy .h-abschnitt--glas .h-gruppe {
+  background: color-mix(in srgb, var(--tint) 16%, rgba(255, 255, 255, 0.62));
+  box-shadow: var(--d-kante), 0 14px 30px -20px color-mix(in srgb, var(--tint) 70%, #0b1530);
+}
+
+body.handy .h-abschnitt--glas .h-datum {
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 1px 2px rgba(11, 21, 48, 0.06);
+}
+
+body.handy .h-abschnitt--glas .h-datum small {
+  color: var(--tint);
+}
+
+body.handy .h-abschnitt--glas .h-datum--heute {
+  background: var(--tint);
+}
+
+body.handy .h-abschnitt--glas .h-datum--heute :is(small, b) {
+  color: #fff;
+}
+
+body.handy .h-abschnitt--glas :is(.h-zeile, .h-aufgabe)::before {
+  background: color-mix(in srgb, var(--tint) 18%, rgba(11, 21, 48, 0.06));
+}
+
+body.handy .h-abschnitt--glas .h-link {
+  color: color-mix(in srgb, var(--tint) 80%, #0b1530);
+  font-weight: 600;
+}
+
+body.handy .h-datum {
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+/* ---------- Leiste oben ---------- */
+body.handy .h-leiste.hat-schatten {
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.7), 0 6px 20px -14px rgba(11, 21, 48, 0.35);
+}
+
+/* ---------- Übersicht: Farbkacheln ---------- */
+body.handy .h-minis {
+  gap: 12px;
+}
+
+body.handy .h-mini--farbe {
+  position: relative;
+  overflow: hidden;
+  min-height: 104px;
+  padding: 14px 15px;
+  border-radius: 22px;
+  background: var(--d-glanz), var(--c);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 16px 28px -16px var(--c);
+}
+
+body.handy .h-mini--farbe::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  bottom: -28px;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+}
+
+body.handy .h-mini--farbe :is(.h-mini__titel, .h-mini__info) {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+body.handy .h-mini--farbe .h-mini__wert {
+  margin: 4px 0 2px;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+body.handy .h-mini--farbe :is(.h-plus, .h-minus) {
+  color: #fff;
+  font-weight: 700;
+}
+
+.h-mini--blau { --c: #2b5cff; }
+.h-mini--schwarz { --c: #151a2e; }
+.h-mini--gruen { --c: #13a06b; }
+.h-mini--gelb { --c: #f2b33d; }
+
+body.handy .h-mini--gelb,
+body.handy .h-mini--gelb :is(.h-mini__titel, .h-mini__info, .h-plus, .h-minus) {
+  color: #3a2600;
+}
+
+body.handy .h-mini--gelb :is(.h-mini__titel, .h-mini__info) {
+  color: rgba(58, 38, 0, 0.72);
+}
+
+body.handy .h-mini--schwarz {
+  background:
+    radial-gradient(90% 80% at 100% 0%, rgba(43, 92, 255, 0.45), transparent 60%),
+    var(--d-glanz),
+    #151a2e;
+}
+
+/* ---------- Status als Pille ---------- */
+body.handy .h-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--farbe) 14%, rgba(255, 255, 255, 0.7));
+  color: color-mix(in srgb, var(--farbe) 85%, #0b1530);
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+/* Avatar in Statusfarbe mit Punkt */
+.h-ava--farbe {
+  position: relative;
+  background: color-mix(in srgb, var(--c) 16%, #ffffff);
+  color: color-mix(in srgb, var(--c) 88%, #0b1530);
+  font-weight: 700;
+}
+
+.h-ava--farbe::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--c);
+  border: 2px solid #fbfcff;
+}
+
+/* ---------- Kunden: Suche, Pipeline, Filter-Raster ---------- */
+body.handy .h-suche {
+  height: 42px;
+  border-radius: 14px;
+}
+
+.h-pipe {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  margin: 14px 0 10px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.h-pipe i {
+  flex: var(--n);
+  background: var(--d-glanz), var(--c);
+}
+
+.h-filter {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0 0 20px;
+}
+
+.h-filter__kachel {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--c) 13%, rgba(255, 255, 255, 0.62));
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), 0 8px 18px -14px rgba(11, 21, 48, 0.35);
+  color: #0b1530;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 350ms var(--h-feder), background-color 200ms ease;
+}
+
+.h-filter__kachel span {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.h-filter__kachel b {
+  font-size: 17px;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--c) 85%, #0b1530);
+  font-variant-numeric: tabular-nums;
+}
+
+.h-filter__kachel:active {
+  transform: scale(0.95);
+}
+
+.h-filter__kachel[aria-pressed="true"] {
+  background: var(--d-glanz), var(--c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 16px -8px var(--c);
+  color: #fff;
+}
+
+.h-filter__kachel[aria-pressed="true"] b {
+  color: #fff;
+}
+
+body.handy .h-buchstabe {
+  color: #5f6884;
+}
+
+/* ---------- Kundenseite ---------- */
+.h-held {
+  position: relative;
+  margin: 0 0 12px;
+  padding: 4px 14px 14px;
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--c) 15%, rgba(255, 255, 255, 0.62));
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), 0 18px 34px -22px color-mix(in srgb, var(--c) 70%, #0b1530);
+  text-align: center;
+}
+
+body.handy .h-held .h-kopf--kontakt {
+  padding: 10px 0 6px;
+  gap: 4px;
+}
+
+body.handy .h-held .h-ava--gross {
+  width: 76px;
+  height: 76px;
+  font-size: 27px;
+  background: linear-gradient(150deg, color-mix(in srgb, var(--c) 45%, #fff), var(--c) 55%, color-mix(in srgb, var(--c) 80%, #000));
+  color: #fff;
+  box-shadow: 0 12px 26px -12px var(--c), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+body.handy .h-held .h-ava--gross::after {
+  display: none;
+}
+
+body.handy .h-held .h-titel {
+  font-size: 26px;
+}
+
+.h-status-wahl {
+  position: relative;
+  display: inline-flex;
+  margin: 2px auto 0;
+}
+
+.h-status-wahl select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 32px;
+  padding: 0 30px 0 26px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  color: color-mix(in srgb, var(--farbe) 85%, #0b1530);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  box-shadow: 0 4px 12px -8px rgba(11, 21, 48, 0.4);
+  cursor: pointer;
+}
+
+.h-status-wahl::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--farbe);
+  pointer-events: none;
+}
+
+.h-status-wahl::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -5px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  color: var(--farbe);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+body.handy .h-held .h-schnell {
+  margin: 14px 0 0;
+}
+
+body.handy .h-schnell .tk-rund {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: var(--d-kante), 0 6px 14px -10px rgba(11, 21, 48, 0.35);
+}
+
+body.handy .h-schnell .tk-rund__kreis:not(.tk-rund__kreis--aus) {
+  background-image: var(--d-glanz);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 6px 12px -6px rgba(11, 21, 48, 0.45);
+}
+
+.tk-rund__kreis--bernstein { background-color: #f2b33d; color: #3a2600; }
+body.handy .h-schnell .tk-rund__kreis--gruen { background-color: #13a06b; }
+body.handy .h-schnell .tk-rund__kreis--blau { background-color: #2b5cff; }
+
+.h-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 24px;
+}
+
+body.handy .h-stats > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 11px 12px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--c) 14%, rgba(255, 255, 255, 0.62));
+}
+
+.h-stats b {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0b1530;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.h-stats small {
+  font-size: 11.5px;
+  color: #5f6884;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Zeitleiste: Linie hinter den Datums-Badges */
+.h-gruppe--zeit {
+  position: relative;
+}
+
+.h-gruppe--zeit::after {
+  content: "";
+  position: absolute;
+  left: 34px;
+  top: 26px;
+  bottom: 26px;
+  width: 2px;
+  border-radius: 2px;
+  background: rgba(11, 21, 48, 0.08);
+}
+
+body.handy .h-zeile--zeit .h-datum {
+  position: relative;
+  z-index: 1;
+  background: color-mix(in srgb, var(--c) 16%, #ffffff);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.7);
+}
+
+body.handy .h-zeile--zeit .h-datum small {
+  color: var(--c);
+}
+
+body.handy .h-zeile--zeit .h-datum--heute {
+  background: var(--c);
+}
+
+.h-doppel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.h-doppel .h-pill {
+  gap: 6px;
+  min-height: 44px;
+  border-radius: 14px;
+}
+
+.h-doppel .h-pill:not(.h-pill--voll) {
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: var(--d-kante), 0 6px 14px -10px rgba(11, 21, 48, 0.35);
+}
+
+.h-doppel .h-icon {
+  width: 17px;
+  height: 17px;
+}
+
+body.handy .h-pill--voll {
+  background: var(--d-glanz), var(--h-blau);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 16px -10px var(--h-blau);
+}
+
+body.handy .h-notiz .h-textfeld {
+  background: var(--d-feld);
+  border-radius: 14px;
+}
+
+body.handy .h-chips--wahl .h-chip {
+  background: var(--d-feld);
+}
+
+/* ---------- Aufgaben: Personen-Kacheln ---------- */
+.h-wer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 20px;
+}
+
+.h-wer__kachel {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "ava zahl" "name name";
+  align-items: center;
+  row-gap: 8px;
+  min-width: 0;
+  padding: 10px 12px 11px 10px;
+  text-align: left;
+  border: 0;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--c) 14%, rgba(255, 255, 255, 0.62));
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), 0 8px 18px -14px rgba(11, 21, 48, 0.35);
+  color: #0b1530;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 350ms var(--h-feder);
+}
+
+.h-wer__kachel em {
+  grid-area: ava;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--d-glanz), var(--c);
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.h-wer__kachel span {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.h-wer__kachel b {
+  grid-area: zahl;
+  justify-self: end;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--c) 85%, #0b1530);
+  font-variant-numeric: tabular-nums;
+}
+
+.h-wer__kachel:active {
+  transform: scale(0.95);
+}
+
+.h-wer__kachel[aria-pressed="true"] {
+  background: var(--d-glanz), var(--c);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 10px 18px -10px var(--c);
+  color: #fff;
+}
+
+.h-wer__kachel[aria-pressed="true"] em {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.h-wer__kachel[aria-pressed="true"] b {
+  color: #fff;
+}
+
+/* Aufgaben-Zeilen leicht in Personenfarbe */
+body.handy .h-aufgabe:has(.h-haken--louis) {
+  background: color-mix(in srgb, #2b5cff 6%, transparent);
+}
+
+body.handy .h-aufgabe:has(.h-haken--lukas) {
+  background: color-mix(in srgb, #13a06b 7%, transparent);
+}
+
+body.handy .h-person {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 13%, transparent);
+  font-size: 12px;
+}
+
+/* ---------- Geld ---------- */
+body.handy .zeitraum .segment {
+  padding: 3px;
+  border-radius: 14px;
+  background: var(--d-glas);
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), var(--d-schatten);
+}
+
+body.handy .zeitraum .segment__pille {
+  border-radius: 11px;
+  background: var(--d-glanz), #2b5cff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 14px -8px #2b5cff;
+}
+
+body.handy .zeitraum .segment__knopf[aria-pressed="true"] {
+  color: #fff;
+  font-weight: 650;
+}
+
+body.handy .h-chart {
+  border-radius: 24px;
+}
+
+body.handy .h-diagramm__balken rect:not(.h-diagramm__treffer) {
+  fill: var(--c, var(--h-blau));
+}
+
+body.handy .h-diagramm__text.ist-aktiv {
+  fill: var(--c, var(--h-blau));
+}
+
+body.handy .h-chart__wert {
+  color: #0b1530;
+  font-weight: 800;
+}
+
+body.handy .h-minis--geld {
+  margin-top: -10px;
+}
+
+body.handy .h-mini--wahl {
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--c) 12%, rgba(255, 255, 255, 0.62));
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), 0 8px 18px -14px rgba(11, 21, 48, 0.35);
+}
+
+body.handy .h-mini--wahl .h-mini__titel {
+  color: color-mix(in srgb, var(--c) 85%, #0b1530);
+}
+
+body.handy .h-mini--wahl[aria-pressed="true"] {
+  background: var(--d-glanz), var(--c);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 12px 22px -12px var(--c);
+}
+
+body.handy .h-mini--wahl[aria-pressed="true"] :is(.h-mini__titel, .h-mini__info) {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+/* Kennzahlen als kleine Kacheln */
+.h-kz {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.h-kz__kachel {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 10px 10px;
+  border: 0;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--c) 13%, rgba(255, 255, 255, 0.62));
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), 0 8px 18px -14px rgba(11, 21, 48, 0.35);
+  color: #0b1530;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 350ms var(--h-feder);
+}
+
+.h-kz__kachel:active {
+  transform: scale(0.95);
+}
+
+.h-kz__kachel i {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: var(--d-glanz), var(--c);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 5px 10px -5px var(--c);
+}
+
+.h-kz__kachel svg,
+.h-bew__ico svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.h-kz__kachel b {
+  max-width: 100%;
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.h-kz__kachel small {
+  font-size: 11.5px;
+  color: #5f6884;
+}
+
+/* Kasse: dunkles Glas mit Farbschimmer */
+body.handy .h-kasse {
+  border-radius: 26px;
+  background:
+    radial-gradient(90% 80% at 100% 0%, rgba(43, 92, 255, 0.55), transparent 60%),
+    radial-gradient(70% 70% at 0% 100%, rgba(230, 124, 115, 0.35), transparent 60%),
+    linear-gradient(160deg, #1a2036, #0c1020);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 18px 34px -16px rgba(1, 15, 43, 0.7);
+}
+
+body.handy .h-teil {
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+body.handy .h-teil--louis { background: rgba(43, 92, 255, 0.32); }
+body.handy .h-teil--lukas { background: rgba(19, 160, 107, 0.32); }
+
+body.handy .h-kasse .h-pill--hell {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+/* Bewegungen als kleine Kacheln */
+.h-bews {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.h-bew {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 0;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--c) 10%, rgba(255, 255, 255, 0.64));
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), 0 8px 18px -14px rgba(11, 21, 48, 0.35);
+  color: #0b1530;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 350ms var(--h-feder);
+}
+
+.h-bew:active {
+  transform: scale(0.96);
+}
+
+.h-bew__ico {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--d-glanz), var(--c);
+  color: #fff;
+}
+
+.h-bew b {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.h-bew__titel,
+.h-bew small {
+  grid-column: 1 / -1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.h-bew__titel {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.h-bew small {
+  font-size: 11.5px;
+  color: #5f6884;
+}
+
+/* ---------- Tabbar als Glas-Pille, + Knopf daneben ---------- */
+body.handy .h-tabs {
+  inset: auto 86px calc(var(--h-unten) + 12px) 12px;
+  height: 60px;
+  padding: 0 4px;
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.66);
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), 0 14px 30px -14px rgba(11, 21, 48, 0.4);
+}
+
+body.handy .h-tabs a {
+  margin: 6px 0;
+  border-radius: 22px;
+  color: #5b6480;
+  font-size: 10px;
+  font-weight: 600;
+  transition: background-color 250ms ease, color 200ms ease;
+}
+
+body.handy .h-tabs svg {
+  width: 23px;
+  height: 23px;
+}
+
+body.handy .h-tabs a[aria-current="page"] {
+  background: rgba(43, 92, 255, 0.14);
+  color: var(--h-blau);
+}
+
+body.handy .h-fab__knopf {
+  right: 14px;
+  bottom: calc(var(--h-unten) + 14px);
+  width: 58px;
+  height: 58px;
+  background: linear-gradient(150deg, #5a83ff, #2b5cff 60%, #1d40d6);
+  box-shadow: 0 14px 26px -8px rgba(43, 92, 255, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+body.handy .h-fab.ist-offen .h-fab__knopf {
+  background: linear-gradient(150deg, #2a3150, #151a2e);
+}
+
+body.handy .h-fab__liste {
+  right: 14px;
+  bottom: calc(var(--h-unten) + 86px);
+}
+
+body.handy .h-fab__liste button {
+  background: rgba(255, 255, 255, 0.8);
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), 0 10px 24px -10px rgba(1, 15, 43, 0.4);
+}
+
+body.handy .h-fab__liste button.ist-haupt {
+  background: var(--d-glanz), var(--h-blau);
+  color: #fff;
+}
+
+body.handy .h-fab__schleier {
+  background: rgba(243, 245, 251, 0.5);
+}
+
+body.handy .toast {
+  bottom: calc(var(--h-unten) + 90px);
+}
+
+body.handy {
+  padding-bottom: calc(var(--h-unten) + 100px);
+}
+
+/* ---------- Panel hinter dem Namens-Kreis ---------- */
+body.handy .h-panel__karte {
+  background: rgba(255, 255, 255, 0.76);
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), 0 24px 60px -20px rgba(1, 15, 43, 0.45);
+}
+
+.h-kacheln {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.h-kachel {
+  display: grid;
+  align-content: space-between;
+  justify-items: start;
+  gap: 14px;
+  min-height: 96px;
+  padding: 13px;
+  border: 0;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--c) 14%, rgba(255, 255, 255, 0.62));
+  box-shadow: var(--d-kante), 0 8px 18px -14px rgba(11, 21, 48, 0.35);
+  color: #0b1530;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 350ms var(--h-feder);
+}
+
+.h-kachel:active {
+  transform: scale(0.96);
+}
+
+.h-kachel__ico {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--d-glanz), var(--c);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 6px 12px -6px var(--c);
+}
+
+.h-kachel__ico svg,
+.h-panel__knopf svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.h-kachel__zeile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.h-panel__unten {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.h-panel__unten:not(:has(:not([hidden]))) {
+  display: none;
+}
+
+.h-panel__knopf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 46px;
+  border: 0;
+  border-radius: 16px;
+  color: #0b1530;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.h-panel__knopf[hidden] {
+  display: none;
+}
+
+.h-panel__knopf--rot {
+  color: var(--h-rot);
+}
+
+.h-panel__unten:has(> :nth-child(1)[hidden]) .h-panel__knopf,
+.h-panel__unten:has(> :nth-child(2)[hidden]) .h-panel__knopf {
+  grid-column: 1 / -1;
+}
+
+/* ---------- Formulare als Karten ---------- */
+body.handy .dialog,
+body.handy .terminkarte {
+  background:
+    radial-gradient(70% 30% at 0% 0%, rgba(43, 92, 255, 0.16), transparent 70%),
+    radial-gradient(60% 30% at 100% 30%, rgba(230, 124, 115, 0.14), transparent 70%),
+    radial-gradient(60% 30% at 0% 90%, rgba(19, 160, 107, 0.12), transparent 70%),
+    #f3f5fb;
+  border-radius: 26px 26px 0 0;
+}
+
+body.handy .dialog__kopf-handy {
+  background: rgba(243, 245, 251, 0.75);
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+}
+
+body.handy .dialog__kopf-handy button[type="submit"] {
+  justify-self: end;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--d-glanz), var(--h-blau);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 14px -8px var(--h-blau);
+}
+
+body.handy .dialog__kopf-handy button[type="submit"]:disabled {
+  background: rgba(11, 21, 48, 0.12);
+  box-shadow: none;
+  color: #fff;
+}
+
+/* Jedes Feld (oder jede Feldreihe) als eigene Glaskarte */
+body.handy .dialog__form > :is(.feld, .feldreihe, fieldset, .kanal-wahl, .chips, .preisart, .team-anteil):not([hidden]) {
+  margin: 0;
+  padding: 11px 13px 12px;
+  border: 0;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.66);
+  -webkit-backdrop-filter: var(--d-blur);
+  backdrop-filter: var(--d-blur);
+  box-shadow: var(--d-kante), var(--d-schatten);
+}
+
+body.handy .dialog__form > .feldreihe .feld {
+  min-width: 0;
+}
+
+body.handy .dialog .feld > span:first-child,
+body.handy .dialog legend {
+  padding: 0 2px 2px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #5f6884;
+}
+
+body.handy .dialog :is(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+  border-radius: 12px;
+  background: var(--d-feld);
+  color: #0b1530;
+}
+
+body.handy .dialog :is(input:not([type="checkbox"], [type="radio"]), select, textarea):focus {
+  outline: none;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(43, 92, 255, 0.5);
+}
+
+body.handy .dialog .chip {
+  border: 0;
+  background: var(--d-feld);
+  border-radius: 999px;
+}
+
+body.handy .dialog .chip:has(input:checked),
+body.handy .dialog .chip[aria-pressed="true"] {
+  background: var(--d-glanz), var(--h-blau);
+  color: #fff;
+}
+
+body.handy .dialog__fuss [data-dialog-entfernen] {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: var(--d-kante), var(--d-schatten);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  body.handy { --d-glas: rgba(255, 255, 255, 0.88); }
+}
