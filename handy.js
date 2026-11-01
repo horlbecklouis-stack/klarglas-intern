@@ -154,7 +154,7 @@ function hUebersicht() {
     ${mini("umsatz", `Umsatz ${esc(monatName)}`, euro(m.umsatz), trendText, "h-mini--farbe h-mini--blau")}
     ${mini("kasse", "Kasse", euro(kassenstand()), "Bargeld da", "h-mini--farbe h-mini--schwarz")}
     ${mini("trinkgeld", "Trinkgeld", tgQuote === null ? "–" : `${tgQuote} %`, `${euro(m.trinkgeld)} extra`, "h-mini--farbe h-mini--gruen")}
-    ${mini("kz", "Ø pro Stunde", euroOder(kz.proStunde), kz.auftraege ? stundenText(kz.stunden * 60) : "noch keine Aufträge", "h-mini--farbe h-mini--gelb")}
+    ${mini("kz", "Ø Std/Person", euroOder(kz.proStundePerson), kz.auftraege ? `zusammen ${euroOder(kz.proStunde)}` : "noch keine Aufträge", "h-mini--farbe h-mini--gelb")}
   </div>`;
 
   const anfragen = anfragenTermine();
@@ -202,8 +202,8 @@ function hUebersicht() {
       ziel: `data-aktion="termin-karte" data-id="${esc(a.id)}"`,
       links: d ? hDatum(a.datum) : `<span class="h-datum h-datum--leer" aria-hidden="true">?</span>`,
       titel: `${esc(auftragName(a))}${istTermin(a) ? ` <span class="h-art">${esc(auftragTitel(a))}</span>` : ""}`,
-      unter: d ? `wahrscheinlich ${esc(hTagText(d))}, ${esc(hUhr(d))} Uhr${d < new Date() ? ' · <span class="h-minus">vorbei</span>' : ""}` : "noch ohne Tag",
-      extra: `<span class="h-geplant-knoepfe"><button class="h-pill h-pill--klein h-pill--voll" type="button" data-aktion="termin-fix" data-id="${esc(a.id)}">Fix machen</button><button class="h-pill h-pill--klein h-pill--aendern" type="button" data-aktion="auftrag-bearbeiten" data-id="${esc(a.id)}" aria-label="Datum ändern"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg></button></span>`,
+      unter: d ? `wahrscheinlich ${esc(hTagText(d))}, ${esc(hUhr(d))} Uhr${d < new Date() ? ' · <span class="h-minus">vorbei</span>' : ""}` : '<span class="h-minus">Datum fehlt</span>',
+      extra: `<span class="h-geplant-knoepfe">${d ? `<button class="h-pill h-pill--klein h-pill--voll" type="button" data-aktion="termin-fix" data-id="${esc(a.id)}">Fix machen</button>` : `<button class="h-pill h-pill--klein h-pill--voll" type="button" data-aktion="datum-festlegen" data-id="${esc(a.id)}">Datum festlegen</button>`}<button class="h-pill h-pill--klein h-pill--aendern" type="button" data-aktion="auftrag-bearbeiten" data-id="${esc(a.id)}" aria-label="Datum ändern"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg></button></span>`,
       chevron: false,
       inset: 64,
     });
@@ -244,7 +244,7 @@ function hAufgabeZeile(a, { wischen = false } = {}) {
   const k = a.kunde_id ? kundeVon(a.kunde_id) : null;
   const ueberfaellig = a.faellig && !a.erledigt && a.faellig < heuteIso();
   const unter = [
-    a.faellig ? `<span class="${ueberfaellig ? "h-minus" : ""}">${esc(hTagText(new Date(`${a.faellig}T12:00`)))}</span>` : "",
+    a.faellig ? `<span class="${ueberfaellig ? "h-minus" : ""}">${esc(hTagText(new Date(`${a.faellig}T12:00`)))}${esc(aufgabeZeitText(a))}</span>` : "",
     k ? esc(k.name) : "",
   ].filter(Boolean).join(" · ");
   const art = { Louis: "louis", Lukas: "lukas" }[a.zustaendig] || "beide";
@@ -273,9 +273,12 @@ function hAufgaben() {
     <div class="h-wer" role="group" aria-label="Aufgaben filtern">
       ${filter.map(([wert, name, kurz, farbe]) => `<button class="h-wer__kachel" type="button" style="--c:${farbe}" aria-pressed="${f === wert}" data-aktion="aufgaben-filter" data-wert="${wert}"><em aria-hidden="true">${kurz}</em><span>${name}</span><b>${zaehl(wert)}</b></button>`).join("")}
     </div>
+    ${aufgabenAbschnitte(offen).map(([titel, l]) => `<section class="h-abschnitt">
+      <div class="h-abschnitt__kopf"><h2>${titel}</h2><span class="h-leise">${l.length}</span></div>
+      <div class="h-gruppe h-gruppe--aufgaben">${l.map((a) => hAufgabeZeile(a, { wischen: true })).join("")}</div>
+    </section>`).join("")}
     <section class="h-abschnitt">
       <div class="h-gruppe h-gruppe--aufgaben">
-        ${offen.map((a) => hAufgabeZeile(a, { wischen: true })).join("")}
         <button class="h-neu" type="button" data-aktion="aufgabe-neu">${hIcon(H_ICON.plus)}Neue Aufgabe</button>
       </div>
       ${!offen.length ? `<p class="h-fuss">Nichts offen. Stark.</p>` : ""}
@@ -289,7 +292,44 @@ function hAufgaben() {
 
 /* ===================== Kunden ===================== */
 
+function hKundenUmschalter() {
+  const i = zustand.kundenAnsicht === "auftraege" ? 1 : 0;
+  return `<div class="h-segment" style="--n:2" role="group" aria-label="Ansicht wählen">
+    <span class="h-segment__pille" aria-hidden="true" style="--i:${i}"></span>
+    <button type="button" aria-pressed="${i === 0}" data-aktion="kunden-ansicht" data-wert="kunden">Kunden</button>
+    <button type="button" aria-pressed="${i === 1}" data-aktion="kunden-ansicht" data-wert="auftraege">Aufträge</button>
+  </div>`;
+}
+
+function hAuftraegeListe() {
+  const liste = auftraegeListe();
+  const summe = liste.reduce((s, a) => s + (zahl(a.bekommen) || 0), 0);
+  const zeile = (a) => {
+    const d = auftragDatum(a);
+    return hZeile({
+      ziel: `data-aktion="termin-karte" data-id="${esc(a.id)}"`,
+      links: hDatum(d.toISOString()),
+      titel: `${kanalMarke(a.kanal)}${esc(auftragName(a))}`,
+      unter: `${esc(fmtDatum.format(d))} · ${esc(a.leistung || "")}${a.team?.length ? ` · ${esc(teamVon(a).join(", "))}` : ""}`,
+      rechts: `<span class="${zahl(a.bekommen) === null ? "h-minus" : ""}">${auftragBetragText(a)}</span>`,
+      inset: 64,
+    });
+  };
+  const z = zustand.auftraegeZeitraum;
+  return `
+    ${hKopf({ titel: "Aufträge", unter: `${liste.length} ${liste.length === 1 ? "Auftrag" : "Aufträge"}${summe ? ` · ${euro(summe)}` : ""}` })}
+    ${hKundenUmschalter()}
+    <label class="h-suche">
+      ${hIcon(H_ICON.suche)}
+      <span class="visually-hidden" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)">Aufträge suchen</span>
+      <input id="suche" type="search" placeholder="Suchen" value="${esc(zustand.suche)}" data-suche autocomplete="off" enterkeyhint="search" />
+    </label>
+    ${z ? `<p class="h-zeitfilter">Nur ${esc(z.titel)} · <button class="h-link" type="button" data-aktion="auftraege-zeitraum-weg">Alle zeigen</button></p>` : ""}
+    ${liste.length ? `<div class="h-gruppe">${liste.map(zeile).join("")}</div>` : `<p class="h-leer">${zustand.suche || z ? "Nichts gefunden." : "Noch keine vergangenen Aufträge."}</p>`}`;
+}
+
 function hKunden() {
+  if (zustand.kundenAnsicht === "auftraege") return hAuftraegeListe();
   const q = zustand.suche.trim().toLowerCase();
   const passt = (k) => !q || [k.name, k.adresse, k.telefon, k.email].some((x) => (x || "").toLowerCase().includes(q));
   const gesucht = daten.kunden.filter(passt);
@@ -331,6 +371,7 @@ function hKunden() {
 
   return `
     ${hKopf({ titel: "Kunden", unter: `${daten.kunden.length} insgesamt` })}
+    ${hKundenUmschalter()}
     <label class="h-suche">
       ${hIcon(H_ICON.suche)}
       <span class="visually-hidden" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)">Kunden suchen</span>
@@ -513,7 +554,7 @@ function hBalken(punkte, aktiv) {
     const oberkante = Math.min(y(p.wert), null_y);
     const h = Math.max(Math.abs(null_y - y(p.wert)), p.wert ? 3 : 0);
     const klasse = i === aktiv ? " ist-aktiv" : aktiv !== null ? " ist-leise" : "";
-    svg += `<g class="h-diagramm__balken${klasse}${p.wert < 0 ? " ist-minus" : ""}" data-h="balken" data-i="${i}">
+    svg += `<g class="h-diagramm__balken${klasse}${p.wert < 0 ? " ist-minus" : ""}" data-h="balken" data-i="${i}"${p.von instanceof Date ? ` data-von="${p.von.toISOString()}" data-bis="${p.bis.toISOString()}" data-titel="${esc(p.titel || p.label)}"` : ""}>
       <rect class="h-diagramm__treffer" x="${(i * schritt).toFixed(1)}" y="0" width="${schritt.toFixed(1)}" height="${HOEHE}" />
       <rect x="${x.toFixed(1)}" y="${oberkante.toFixed(1)}" width="${breite.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(5, breite / 2).toFixed(1)}" />
     </g>`;
@@ -585,18 +626,12 @@ function hGeld(id) {
     </button>`;
   }).join("");
 
-  const erstattungen = offeneErstattungen();
-  const t = aufteilung();
-  const teil = t.personen.map((p) => {
-    const rund = Math.round(p.noch * 100) / 100;
-    return `<div class="h-teil h-teil--${p.name === "Louis" ? "louis" : p.name === "Lukas" ? "lukas" : "andere"}"><span class="h-teil__name">${esc(p.name)}</span><b>${euro(Math.abs(rund))}</b><small>${rund === 0 ? "ausgeglichen" : rund > 0 ? "bekommt noch" : "hat zu viel"}</small></div>`;
-  }).join("");
-  const ausgleich = t.D >= 0.005 && t.D <= kasse + 0.005
-    ? `<button class="h-pill h-pill--hell" type="button" data-aktion="ausgleich">Ausgleich auszahlen · ${euro(t.D)} an ${esc(t.hinten.name)}</button>`
-    : "";
-
+  const ks = konten();
+  const teil = ks.map((p) => `<button class="h-teil h-teil--${p.name === "Louis" ? "louis" : "lukas"}" type="button" data-aktion="konto-auszahlen" data-wert="${esc(p.name)}"><span class="h-teil__name">${esc(p.name)}</span><b class="${p.guthaben < -0.004 ? "h-minus" : ""}">${euro(p.guthaben)}</b><small>auf dem Konto · auszahlen</small></button>`).join("");
   const bewegungen = bewegungenListe();
   const k = kennzahlenFuer(g.von, g.bis);
+  const nk = neukundenIm(g.von, g.bis);
+  const hr = istLaufenderMonat(g) ? hochrechnungMonat() : null;
   const kz = (zeige, titel, wert, farbe, icon) => `<button class="h-kz__kachel" type="button" style="--c:${farbe}" data-aktion="geld-tab" data-wert="${zeige}">
       <i aria-hidden="true"><svg viewBox="0 0 24 24">${icon}</svg></i><b>${wert}</b><small>${titel}</small>
     </button>`;
@@ -610,21 +645,26 @@ function hGeld(id) {
       <p class="h-chart__klein">${klein}</p>
       ${hBalken(reihe, aktiv)}
       <p class="h-chart__hinweis">${esc(untertitel)}${aktiv !== null ? ` · <button class="h-link" type="button" data-h="balken-weg">Zurück zur Summe</button>` : " · Balken antippen"}</p>
+      ${aktiv !== null ? `<p class="h-chart__hinweis">${bezahltImZeitraum(reihe[aktiv].von, reihe[aktiv].bis).length} Aufträge · nochmal tippen zum Ansehen</p>` : ""}
     </section>
     <div class="h-minis h-minis--geld" role="group" aria-label="Diagramm wählen">${kacheln}</div>
+    ${hr ? `<button class="h-hochrechnung" type="button" data-aktion="geld-tab" data-wert="hochrechnung">
+      <span><small>Hochrechnung ${esc(hr.monat)}</small><b>~${euro(hr.gesamt)}</b></span>
+      <span class="h-leise">${euro(hr.bekommen)} da + ${hr.rest.length} offen</span>
+    </button>` : ""}
 
     <section class="h-abschnitt">
       <div class="h-abschnitt__kopf"><h2><span class="h-ico" style="--c:#6A4BE0" aria-hidden="true"><svg viewBox="0 0 24 24">${H_ICON.balken}</svg></span>Kennzahlen</h2><span class="h-leise">${esc(g.label)}</span></div>
       <div class="h-kz">
         ${kz("kz-auftrag", "Ø Auftrag", euroOder(k.proAuftrag), "#2B5CFF", H_ICON.auftrag)}
-        ${kz("kz-stunde", "Ø Stunde", euroOder(k.proStunde), "#6A4BE0", H_ICON.uhr)}
+        ${kz("kz-stunde", "Ø Std/Person", euroOder(k.proStundePerson), "#6A4BE0", H_ICON.uhr)}
         ${kz("kz-fenster", "Ø Fenster", euroOder(k.proFenster), "#13A06B", H_ICON.fenster)}
         ${kz("kz-loehne", "Löhne", euro(k.loehne), "#E67C73", H_ICON.person)}
         ${kz("kz-kasse", "Kasse / Std", euroOder(k.kasseProStunde), "#F2B33D", H_ICON.kasse)}
         ${kz("auftraege", "Aufträge", String(m.auftraege), "#151a2e", H_ICON.haken)}
         ${kz("ausgaben", "Ausgaben", euro(m.ausgaben), "#E5372F", H_ICON.minus)}
         ${kz("marge", "Marge", m.marge === null ? "–" : `${m.marge} %`, "#0FA3B1", H_ICON.prozent)}
-        ${kz("kz-stunde", "Stunden", k.auftraege ? stundenText(k.stunden * 60) : "–", "#8a5cf6", H_ICON.uhr)}
+        ${kz("neukunden", `${nk.mit} mit Auftrag`, `${nk.neu} neu`, "#0FA3B1", H_ICON.person)}
       </div>
       ${k.geschaetzt ? `<p class="h-fuss">${k.geschaetzt} von ${k.auftraege} Dauern geschätzt.</p>` : ""}
     </section>
@@ -632,14 +672,9 @@ function hGeld(id) {
     <section class="h-kasse" aria-labelledby="h-kasse-titel">
       <p class="h-kasse__titel" id="h-kasse-titel">Kassenstand</p>
       <p class="h-kasse__wert">${euro(kasse)}</p>
-      <p class="h-kasse__info">So viel Bargeld sollte da sein</p>
+      <p class="h-kasse__info">Gemeinschaftskonto · so viel Bargeld sollte da sein</p>
       <div class="h-teile">${teil}</div>
-      <p class="h-kasse__satz">${t.D >= 0.005 ? `${esc(t.vorne.name)} hat sich ${euro(t.D)} mehr ausgezahlt.` : "Gewinn wird 50/50 geteilt."}</p>
-      ${ausgleich}
-      ${erstattungen.length ? `<div class="h-kasse__erstatten">
-        <p class="h-kasse__titel">Noch zu erstatten</p>
-        ${erstattungen.map((x) => `<div class="h-kasse__zeile"><span>${esc(x.bezahlt_von)}: ${esc(x.kategorie)} · ${euro(x.betrag)}</span><button class="h-pill h-pill--klein h-pill--hell" type="button" data-aktion="erstatten" data-id="${esc(x.id)}">Erstatten</button></div>`).join("")}
-      </div>` : ""}
+      <p class="h-kasse__satz">Allein ${alleinStandard()}/${100 - alleinStandard()} · zu zweit ${louisStandard()}/${100 - louisStandard()} · Ausgaben halbe-halbe</p>
       <div class="h-kasse__knoepfe">
         <button class="h-pill h-pill--hell" type="button" data-aktion="auszahlung-neu">Auszahlung</button>
         <button class="h-pill h-pill--hell" type="button" data-aktion="ausgabe-neu">Ausgabe</button>
@@ -857,9 +892,11 @@ function hEinstellungen() {
     ].join(""), { fuss: "Kleinere Aufträge werden auf den Mindestauftrag aufgerundet." })}
     ${hAbschnitt("Nachbarschaftshilfe & Felgen", zahlFeld("stundensatz", "Stundenlohn", p.stundensatz, "€"), { fuss: "Vorschlag für neue Aufträge, im Auftrag änderbar." })}
     ${hAbschnitt("Team", [
-      zahlFeld("anteil_prozent", "Anteil pro Kopf", standardAnteil(), "%", "1"),
+      zahlFeld("anteil_prozent", "Anteil Mitarbeiter", standardAnteil(), "%", "1"),
+      zahlFeld("allein_prozent", "Einer allein bekommt", alleinStandard(), "%", "1"),
+      zahlFeld("beide_louis_prozent", "Zu zweit: Louis-Anteil", louisStandard(), "%", "1"),
       hZeile({ href: "#team", titel: "Team & Mitarbeiter", rechts: `<span class="h-leise">${2 + aktiveMitarbeiter().length}</span>` }),
-    ].join(""), { fuss: "So viel nimmt jeder, der mitarbeitet, bar mit. Seid ihr beide dabei, geht alles in die Kasse." })}
+    ].join(""), { fuss: "Mitarbeiter nehmen ihren Anteil bar mit. Allein: Rest geht an den anderen. Gilt nur für neue Aufträge." })}
     <section class="h-abschnitt">
       <div class="h-abschnitt__kopf"><h2>Woher Kunden kommen</h2></div>
       <div class="h-gruppe">
@@ -1401,6 +1438,11 @@ function hKlick(e) {
       return render();
     case "balken": {
       const i = Number(el.dataset.i);
+      // Zweites Tippen auf den aktiven Balken: Aufträge dieses Zeitraums
+      if (H.balken === i && el.dataset.von) {
+        H.balken = null;
+        return auftraegeZeigen(new Date(el.dataset.von), new Date(el.dataset.bis), el.dataset.titel);
+      }
       H.balken = H.balken === i ? null : i;
       hVibe(5);
       return render();
@@ -1821,14 +1863,16 @@ function hfAuftrag(form) {
     $("[data-hf-preis-titel]", preis).textContent = bekommen !== null ? "Bekommen" : preisLabel.textContent.replace(" (€)", "");
     const team = teamAusForm(form);
     const prozent = zahl(werte.anteil_prozent) ?? standardAnteil();
-    const teil = lohnAufteilung({ bekommen: betrag, team, prozent });
-    const kassePct = Math.max(0, 100 - prozent * teil.loehne.length);
-    $(".hf-teil", preis).innerHTML = [...teil.loehne.map((l) => `<span>${esc(l.name)} · ${prozent} %<b>${euro(l.betrag)}</b></span>`), `<span class="hf-teil__kasse">Kasse · ${kassePct} %<b>${euro(teil.kasse)}</b></span>`].join("");
+    const teil = lohnAufteilung({ bekommen: betrag, team, prozent, allein: alleinVon(dialogAuftragAktuell), louis: louisVon(dialogAuftragAktuell) });
+    $(".hf-teil", preis).innerHTML = [
+      ...teil.loehne.map((l) => `<span>${esc(l.name)} · ${prozent} % bar<b>${euro(l.betrag)}</b></span>`),
+      ...PERSONEN.filter((p) => team.length).map((p) => `<span class="hf-teil__kasse">${p}s Konto<b>${euro(teil.konto[p])}</b></span>`),
+    ].join("");
     $(".hf-preis__regel", preis).textContent = !team.length ? "Unten auswählen, wer mitarbeitet."
       : teil.zuViel ? "Achtung: zusammen über 100 %!"
-      : teil.beideChefs && !teil.loehne.length ? "Ihr beide seid dabei: alles geht in die Kasse."
-      : teil.beideChefs ? "Ihr beide seid dabei: nur die Mitarbeiter bekommen ihren Anteil."
-      : `${prozent} % pro Kopf, der Rest geht in die Kasse.`;
+      : teil.regel === "allein" ? `Einer allein: ${alleinVon(dialogAuftragAktuell)} % für ihn, der Rest für den anderen.`
+      : teil.regel === "mit" ? `Mitarbeiter ${prozent} % bar, der Chef dabei ${prozent} % aufs Konto, Rest geteilt.`
+      : teil.loehne.length ? `Mitarbeiter ${prozent} % bar, der Rest wird geteilt.` : "Ihr beide seid dabei: wird geteilt.";
   };
   form.addEventListener("input", preisZeigen);
   form.addEventListener("change", preisZeigen);
@@ -1865,7 +1909,7 @@ function hfAuftrag(form) {
 
   const notiz = hfFeld(form, "notiz");
   $("span", notiz).textContent = "Notiz";
-  const kontakt = hfKarte("Kontakt über", "pfeil", "#d08a00", [hfKanal(form), notiz]);
+  const kontakt = hfKarte("Notiz", "pfeil", "#d08a00", [notiz]);
 
   const nachher = hfEl(`<details class="hf-nach"><summary>${hfIco("haken", "#13a06b")}<span>Nach dem Termin</span><small>Geld &amp; Zeit</small></summary><div class="hf-paar"></div></details>`);
   const gebraucht = hfFeld(form, "dauer_echt");
@@ -1966,10 +2010,18 @@ function hfAufgabe(form) {
   const h = new Date();
   const heute = new Date(h.getFullYear(), h.getMonth(), h.getDate());
   const faellig = hfTag(form.querySelector("[name=faellig]"), { leiste: true, farbe: "#d08a00", schnell: [["Ohne", null], ["Heute", heute], ["Morgen", tagPlus(heute, 1)], ["Samstag", hfNaechster(6)], ["Nächste Woche", hfNaechster(1)]] });
+  const uhr = hfFeld(form, "uhrzeit");
+  uhr.classList.add("hf-klein");
+  const push = hfSchalter(form.querySelector("[data-push-zeile]"), "🔔 Push-Erinnerung", "Ohne Uhrzeit um 9 Uhr", "#6a4be0");
+  const vorlauf = hfKacheln(form.querySelector("[name=vorlauf_min]"), VORLAUF.map(([w, t]) => ({ wert: String(w), name: t, farbe: "#6a4be0" })), { spalten: 2, klein: true });
+  const vorlaufZeigen = () => (vorlauf.hidden = !form.elements.push.checked);
+  form.addEventListener("change", vorlaufZeigen);
+  vorlaufZeigen();
   return [
     hfKarte("", "", "", [titel]),
     hfKarte("Wer?", "person", "#e67c73", [wer]),
-    hfKarte("Bis wann?", "uhr", "#d08a00", faellig),
+    hfKarte("Wann?", "uhr", "#d08a00", [...faellig, uhr]),
+    hfKarte("Erinnerung", "uhr", "#6a4be0", [push, vorlauf]),
     hfKarte("Zu Kunde", "link", "#13a06b", [hfKunde(form.querySelector("[name=kunde_id]"), { optional: true })]),
   ];
 }

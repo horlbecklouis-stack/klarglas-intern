@@ -26,7 +26,7 @@ const PREIS_STANDARD = { preis_normal: 5, preis_boden: 10, mindestpreis: 25, stu
 const STAMM_AB = 3; // bezahlte Besuche, ab denen jemand Stammkunde ist
 
 const daten = Object.fromEntries(TABELLEN.map((t) => [t, []]));
-const zustand = { kundenFilter: "alle", suche: "", geldZeitraum: "monat", geldStichtag: new Date(), geldPillePrev: null, aufgabenFilter: "offen", kalenderPruefung: null };
+const zustand = { kundenFilter: "alle", suche: "", kundenAnsicht: "kunden", auftraegeZeitraum: null, geldZeitraum: "monat", geldStichtag: new Date(), geldPillePrev: null, aufgabenFilter: "offen", kalenderPruefung: null };
 let ich = "Test";
 let db = null;
 
@@ -138,7 +138,7 @@ function lokaleDb() {
   }
   if (!speicher.einstellungen || speicher.einstellungen.length === 0) {
     speicher.einstellungen = [
-      { id: 1, slot_minuten: 60, slot_schritt: 30, vorlauf_stunden: 12, tage_voraus: 14, anteil_prozent: 25, ...PREIS_STANDARD },
+      { id: 1, slot_minuten: 60, slot_schritt: 30, vorlauf_stunden: 12, tage_voraus: 14, anteil_prozent: 25, allein_prozent: 85, beide_louis_prozent: 50, ...PREIS_STANDARD },
     ];
   }
   schreiben(speicher);
@@ -356,14 +356,14 @@ function kassenstand() {
   return rein - raus - ausgezahlt;
 }
 
-const offeneErstattungen = () =>
-  daten.ausgaben.filter((x) => x.bezahlt_von !== "Kasse" && !x.erstattet);
+// Seit v18 wird nichts mehr erstattet: Wer privat auslegt, bekommt es sofort aufs eigene Konto
+const offeneErstattungen = () => [];
 
-// Kanal eines Kunden: erst der Kanal des ersten Auftrags, sonst die Angabe beim Anlegen
+// Kanal eines Kunden: steht seit v18 nur beim Kunden; alte Kunden ohne Angabe: Kanal des ersten Auftrags
 const kanalAusKunde = (k) => (KANAELE[k?.quelle] ? k.quelle : null);
 function kanalVonKunde(k) {
-  const erster = auftraegeVon(k.id).sort((a, b) => auftragDatum(a) - auftragDatum(b))[0];
-  return erster?.kanal || kanalAusKunde(k);
+  if (kanalAusKunde(k)) return k.quelle;
+  return auftraegeVon(k.id).sort((a, b) => auftragDatum(a) - auftragDatum(b))[0]?.kanal || null;
 }
 
 // Auszahlungen, die als Anteil am Gewinn zählen (Erstattungen nicht)
@@ -378,30 +378,84 @@ const aktiveMitarbeiter = () => daten.mitarbeiter.filter((m) => m.aktiv !== fals
 const teamVon = (a) => (Array.isArray(a.team) && a.team.length ? a.team : [...PERSONEN]);
 const prozentVon = (a) => zahl(a.anteil_prozent) ?? standardAnteil();
 
-// Sind Louis und Lukas beide dabei, kriegen sie nichts; alle anderen (oder einer allein) kriegen ihren Anteil
-function lohnAufteilung({ bekommen, team, prozent }) {
-  const betrag = Number(bekommen) || 0;
-  const beideChefs = PERSONEN.every((p) => team.includes(p));
-  const empfaenger = team.filter((n) => !(beideChefs && PERSONEN.includes(n)));
-  const pro = Math.round(betrag * (Number(prozent) || 0)) / 100;
-  const loehne = empfaenger.map((name) => ({ name, betrag: pro }));
-  const summe = loehne.reduce((s, l) => s + l.betrag, 0);
-  return { loehne, kasse: Math.max(0, Math.round((betrag - summe) * 100) / 100), beideChefs, zuViel: empfaenger.length * prozent > 100 };
-}
+// Allein-Regel (85/15) und Beide-da-Teilung (Louis-Anteil in %) – stehen in den Einstellungen,
+// werden beim Bezahlen in den Auftrag geschrieben und gelten dann fest für diesen Auftrag
+const STANDARD_ALLEIN = 85;
+const STANDARD_LOUIS = 50;
+const alleinStandard = () => zahl(daten.einstellungen?.[0]?.allein_prozent) ?? STANDARD_ALLEIN;
+const louisStandard = () => zahl(daten.einstellungen?.[0]?.beide_louis_prozent) ?? STANDARD_LOUIS;
+const alleinVon = (a) => zahl(a.allein_prozent) ?? alleinStandard();
+const louisVon = (a) => zahl(a.louis_prozent) ?? louisStandard();
+const cent = (x) => Math.round(x * 100) / 100;
 
-// Kurztext wie „Flo 25 € · Lukas 25 € · Kasse 50 €“
+// Wie ein Betrag verteilt wird:
+// – Mitarbeiter (z. B. Flo) kriegen ihren Anteil bar (loehne)
+// – einer von euch allein: 85 % auf sein Konto, 15 % aufs Konto des anderen
+// – einer von euch mit Mitarbeiter: sein Anteil aufs eigene Konto, Rest geteilt
+// – ihr beide: Rest geteilt (Standard 50/50)
+function lohnAufteilung({ bekommen, team, prozent, allein = alleinStandard(), louis = louisStandard() }) {
+  const betrag = Number(bekommen) || 0;
+  const chefs = PERSONEN.filter((p) => team.includes(p));
+  const beideChefs = chefs.length === PERSONEN.length;
+  const konto = Object.fromEntries(PERSONEN.map((p) => [p, 0]));
+  const pro = Math.round(betrag * (Number(prozent) || 0)) / 100;
+  const mitarbeiter = team.filter((n) => !PERSONEN.includes(n));
+  const loehne = mitarbeiter.map((name) => ({ name, betrag: pro }));
+  let rest = betrag - loehne.reduce((s, l) => s + l.betrag, 0);
+  let regel = "beide";
+  if (chefs.length === 1 && !mitarbeiter.length) {
+    regel = "allein";
+    const er = chefs[0];
+    const anderer = PERSONEN.find((p) => p !== er);
+    konto[er] = cent((betrag * (Number(allein) || 0)) / 100);
+    konto[anderer] = cent(betrag - konto[er]);
+  } else {
+    if (chefs.length === 1) {
+      regel = "mit";
+      konto[chefs[0]] += pro;
+      rest -= pro;
+    }
+    rest = Math.max(0, cent(rest));
+    konto[PERSONEN[0]] += cent((rest * (Number(louis) || 0)) / 100);
+    konto[PERSONEN[1]] += cent(rest - cent((rest * (Number(louis) || 0)) / 100));
+  }
+  PERSONEN.forEach((p) => (konto[p] = cent(konto[p])));
+  const kasse = cent(betrag - loehne.reduce((s, l) => s + l.betrag, 0));
+  const zuViel = (mitarbeiter.length + (chefs.length === 1 && mitarbeiter.length ? 1 : 0)) * prozent > 100;
+  return { loehne, konto, kasse, beideChefs, regel, zuViel };
+}
+const kontoAufteilung = (a) =>
+  lohnAufteilung({ bekommen: a.bekommen, team: teamVon(a), prozent: prozentVon(a), allein: alleinVon(a), louis: louisVon(a) });
+
+// Kurztext wie „Flo 15 € bar · Lukas 30 € · Louis 15 €“
 function aufteilungText(teil, betrag) {
-  if (!teil.loehne.length) return teil.beideChefs ? `Ihr beide → alles in die Kasse${betrag ? ` (${euro(betrag)})` : ""}` : `Alles in die Kasse`;
-  const text = [...teil.loehne.map((l) => `${esc(l.name)} ${euro(l.betrag)}`), `Kasse ${euro(teil.kasse)}`].join(" · ");
+  const teile = [
+    ...teil.loehne.map((l) => `${esc(l.name)} ${euro(l.betrag)} bar`),
+    ...PERSONEN.filter((p) => teil.konto[p] > 0 || betrag).map((p) => `${p} ${euro(teil.konto[p])}`),
+  ];
+  const text = teile.join(" · ");
   return teil.zuViel ? `${text} · <span class="minus">über 100 %!</span>` : text;
 }
 
-// Löhne eines Auftrags neu buchen: alte weg, neue rein (nie doppelt)
-async function lohnBuchen(a) {
+// Löhne eines Auftrags neu buchen: alte weg, neue rein (nie doppelt). Nur Mitarbeiter kriegen echten Lohn,
+// Louis und Lukas bekommen ihren Teil aufs Konto. Beim Bezahlen werden die Prozente im Auftrag festgehalten.
+async function lohnBuchen(neuA) {
+  const a = { ...(daten.auftraege.find((x) => x.id === neuA.id) || {}), ...neuA };
   const alt = daten.auszahlungen.filter((x) => x.art === "lohn" && x.auftrag_id === a.id);
   for (const x of alt) await db.remove("auszahlungen", x.id);
+  if (zahl(a.bekommen) !== null && a.id) {
+    const fest = {};
+    if (zahl(a.anteil_prozent) === null) fest.anteil_prozent = standardAnteil();
+    if (zahl(a.allein_prozent) === null) fest.allein_prozent = alleinStandard();
+    if (zahl(a.louis_prozent) === null) fest.louis_prozent = louisStandard();
+    if (Object.keys(fest).length) {
+      await db.update("auftraege", a.id, fest);
+      Object.assign(a, fest);
+      await laden("auftraege");
+    }
+  }
   if (zahl(a.bekommen) !== null && !istTermin(a)) {
-    const { loehne } = lohnAufteilung({ bekommen: a.bekommen, team: teamVon(a), prozent: prozentVon(a) });
+    const { loehne } = kontoAufteilung(a);
     const kunde = kundeVon(a.kunde_id)?.name;
     for (const l of loehne) {
       if (!l.betrag) continue;
@@ -433,10 +487,12 @@ function kennzahlenFuer(von, bis) {
   const bezahlt = bezahltImZeitraum(von, bis).filter((a) => !istTermin(a));
   const umsatz = bezahlt.reduce((s, a) => s + Number(a.bekommen), 0);
   let minuten = 0;
+  let personenMin = 0;
   let geschaetzt = 0;
   bezahlt.forEach((a) => {
     const d = dauerVon(a);
     minuten += d.min;
+    personenMin += d.min * teamVon(a).length;
     if (d.geschaetzt) geschaetzt++;
   });
   const fensterAuftraege = bezahlt.filter((a) => Number(a.fenster_normal || 0) + Number(a.fenster_boden || 0) > 0);
@@ -455,6 +511,8 @@ function kennzahlenFuer(von, bis) {
     geschaetzt,
     proAuftrag: bezahlt.length ? umsatz / bezahlt.length : null,
     proStunde: stunden ? umsatz / stunden : null,
+    // Stundenlohn pro Kopf: alles Geld ÷ (Stunden × Leute im Team)
+    proStundePerson: personenMin ? umsatz / (personenMin / 60) : null,
     proFenster: fenster ? umsatzFenster / fenster : null,
     fensterProAuftrag: fensterAuftraege.length ? fenster / fensterAuftraege.length : null,
     loehne,
@@ -473,7 +531,7 @@ function einsaetzeVon(name, von = null, bis = null) {
     .sort((a, b) => auftragDatum(b) - auftragDatum(a));
 }
 const lohnFuer = (name, a) =>
-  daten.auszahlungen.filter((x) => x.art === "lohn" && x.auftrag_id === a.id && x.an === name).reduce((s, x) => s + Number(x.betrag), 0);
+  PERSONEN.includes(name) ? kontoAufteilung(a).konto[name] : daten.auszahlungen.filter((x) => x.art === "lohn" && x.auftrag_id === a.id && x.an === name).reduce((s, x) => s + Number(x.betrag), 0);
 
 function personZahlen(name, von = null, bis = null) {
   const einsaetze = einsaetzeVon(name, von, bis);
@@ -489,30 +547,30 @@ function personZahlen(name, von = null, bis = null) {
   };
 }
 
-// 50/50: Der Gewinn wird immer geteilt, egal wer gearbeitet hat.
-// verteilbar = Kasse - offene Erstattungen + schon ausgezahlte Anteile; Anteil = verteilbar / 2
-function aufteilung() {
-  const offen = offeneErstattungen();
-  const anteile = daten.auszahlungen.filter(istAnteil);
-  const summeAnteile = anteile.reduce((s, x) => s + Number(x.betrag), 0);
-  const summeOffen = offen.reduce((s, x) => s + Number(x.betrag), 0);
-  const verteilbar = kassenstand() - summeOffen + summeAnteile;
-  const anteil = verteilbar / 2;
-  const personen = PERSONEN.map((name) => {
-    const bereitsAnteil = anteile.reduce(
-      (s, x) => s + (x.an === name ? Number(x.betrag) : x.an === "Beide" ? Number(x.betrag) / 2 : 0),
-      0
-    );
-    const erstattungOffen = offen.filter((x) => x.bezahlt_von === name).reduce((s, x) => s + Number(x.betrag), 0);
-    return { name, anteil, bereitsAnteil, erstattungOffen, noch: anteil - bereitsAnteil + erstattungOffen };
+// Eigene Konten: Die Kasse ist ein gemeinsamer Topf, darin hat jeder sein Guthaben.
+// Guthaben = Anteile aus Aufträgen − halbe Ausgaben + selbst ausgelegt − ausgezahlt
+function konten() {
+  const k = Object.fromEntries(PERSONEN.map((name) => [name, { name, auftraege: 0, ausgaben: 0, ausgelegt: 0, ausgezahlt: 0 }]));
+  daten.auftraege.filter((a) => zahl(a.bekommen) !== null).forEach((a) => {
+    const t = kontoAufteilung(a);
+    PERSONEN.forEach((p) => (k[p].auftraege += t.konto[p]));
   });
-  const [a, b] = personen;
-  const vorne = a.bereitsAnteil >= b.bereitsAnteil ? a : b;
-  const hinten = vorne === a ? b : a;
-  // Wer weniger Anteil ausgezahlt bekommen hat, bekommt den Unterschied zuerst
-  const D = Math.round((vorne.bereitsAnteil - hinten.bereitsAnteil) * 100) / 100;
-  return { verteilbar, anteil, personen, vorne, hinten, D };
+  daten.ausgaben.forEach((x) => {
+    const b = Number(x.betrag) || 0;
+    PERSONEN.forEach((p) => (k[p].ausgaben += b / 2));
+    if (k[x.bezahlt_von]) k[x.bezahlt_von].ausgelegt += b;
+  });
+  daten.auszahlungen.filter((x) => x.art !== "lohn").forEach((x) => {
+    const b = Number(x.betrag) || 0;
+    if (k[x.an]) k[x.an].ausgezahlt += b;
+    else PERSONEN.forEach((p) => (k[p].ausgezahlt += b / 2));
+  });
+  return PERSONEN.map((p) => {
+    const z = k[p];
+    return { ...z, guthaben: cent(z.auftraege - z.ausgaben + z.ausgelegt - z.ausgezahlt) };
+  });
 }
+const guthabenVon = (name) => konten().find((p) => p.name === name)?.guthaben ?? 0;
 
 const nochEintragen = () =>
   daten.auftraege
@@ -524,10 +582,11 @@ const kommendeTermine = () =>
     .filter((a) => !a.abgesagt && !a.vorlaeufig && a.datum && new Date(a.datum) >= new Date())
     .sort((a, b) => new Date(a.datum) - new Date(b.datum));
 
-// Vorläufig ausgemacht, aber noch nicht fest: auch wenn der Tag schon vorbei ist, bleibt er hier stehen
+// Noch nicht fest: vorläufig ausgemacht oder ganz ohne Datum. Auch wenn der Tag vorbei ist, bleibt er hier stehen
+const nochNichtFest = (a) => (a.vorlaeufig || !a.datum) && !a.abgesagt && zahl(a.bekommen) === null;
 const geplanteTermine = () =>
   daten.auftraege
-    .filter((a) => a.vorlaeufig && !a.abgesagt && zahl(a.bekommen) === null)
+    .filter(nochNichtFest)
     .sort((a, b) => new Date(a.datum || a.erstellt) - new Date(b.datum || b.erstellt));
 
 const anfragenTermine = () =>
@@ -655,11 +714,13 @@ function geplantZeile(a) {
       ${d ? datumMarke(a.datum) : ""}
       <span class="zeile__haupt">
         <span class="zeile__titel">${kanalMarke(a.kanal)}${esc(auftragName(a))}${istTermin(a) ? ` <span class="art-marke">${esc(auftragTitel(a))}</span>` : ""}</span>
-        <span class="zeile__unter">${d ? `wahrscheinlich ${esc(fmtTag.format(d))}, ${esc(fmtUhr.format(d))} Uhr` : "noch ohne Tag"}${istTermin(a) ? "" : ` · ${esc(a.leistung)}`}${vorbei ? ' · <span class="minus">Tag ist vorbei</span>' : ""}</span>
+        <span class="zeile__unter">${d ? `wahrscheinlich ${esc(fmtTag.format(d))}, ${esc(fmtUhr.format(d))} Uhr` : '<span class="minus">Datum fehlt</span>'}${istTermin(a) ? "" : ` · ${esc(a.leistung)}`}${vorbei ? ' · <span class="minus">Tag ist vorbei</span>' : ""}</span>
       </span>
     </button>
     <div class="geplant-zeile__aktionen">
-      <button class="knopf knopf--klein knopf--voll" type="button" data-aktion="termin-fix" data-id="${esc(a.id)}">Fix machen</button>
+      ${d
+        ? `<button class="knopf knopf--klein knopf--voll" type="button" data-aktion="termin-fix" data-id="${esc(a.id)}">Fix machen</button>`
+        : `<button class="knopf knopf--klein knopf--voll" type="button" data-aktion="datum-festlegen" data-id="${esc(a.id)}">Datum festlegen</button>`}
       <button class="knopf knopf--klein knopf--leise" type="button" data-aktion="auftrag-bearbeiten" data-id="${esc(a.id)}">Ändern</button>
     </div>
   </li>`;
@@ -685,7 +746,7 @@ function aufgabeZeile(a) {
   const k = a.kunde_id ? kundeVon(a.kunde_id) : null;
   const ueberfaellig = a.faellig && !a.erledigt && a.faellig < heuteIso();
   const unter = [
-    a.faellig ? `${ueberfaellig ? '<span class="minus">überfällig · </span>' : ""}bis ${esc(fmtTag.format(new Date(a.faellig)))}` : "",
+    a.faellig ? `${ueberfaellig ? '<span class="minus">überfällig · </span>' : ""}${esc(fmtTag.format(new Date(`${a.faellig}T12:00`)))}${esc(aufgabeZeitText(a))}` : "",
     k ? `<a href="#kunde/${esc(k.id)}">${esc(k.name)}</a>` : "",
   ].filter(Boolean).join(" · ");
   return `<li class="aufgabe${a.erledigt ? " erledigt" : ""}">
@@ -718,15 +779,18 @@ function outpostKnopf(a) {
 }
 
 // Einfaches Balkendiagramm als SVG: Gruppen nebeneinander, Werte in Euro
-function balken(gruppen, reihen) {
+function balken(gruppen, reihen, format = euro) {
   const B = 640, H = 220, unten = 28, oben = 16;
   const max = Math.max(1, ...gruppen.flatMap((g) => reihen.map((r) => Math.abs(g.werte[r.id] || 0))));
   const breiteGruppe = B / Math.max(gruppen.length, 1);
   const breiteBalken = Math.min(26, (breiteGruppe * 0.7) / reihen.length);
   const hoehe = (w) => ((H - unten - oben) * Math.max(0, w)) / max;
-  let svg = `<svg class="diagramm" viewBox="0 0 ${B} ${H}" role="img" aria-label="${esc(gruppen.map((g) => `${g.label}: ${reihen.map((r) => `${r.name} ${euro(g.werte[r.id] || 0)}`).join(", ")}`).join("; "))}">`;
+  let svg = `<svg class="diagramm" viewBox="0 0 ${B} ${H}" role="img" aria-label="${esc(gruppen.map((g) => `${g.label}: ${reihen.map((r) => `${r.name} ${format(g.werte[r.id] || 0)}`).join(", ")}`).join("; "))}">`;
   svg += `<line x1="0" x2="${B}" y1="${H - unten}" y2="${H - unten}" stroke="#E4E4E7" />`;
   gruppen.forEach((g, i) => {
+    const text = `${g.titel || g.label}: ${reihen.map((r) => `${r.name} ${format(g.werte[r.id] || 0)}`).join(", ")}`;
+    const spitze = Math.max(0, ...reihen.map((r) => hoehe(g.werte[r.id] || 0)));
+    svg += `<rect class="diagramm__punkt" ${tippAttr(g, text)} data-x="${((i + 0.5) / gruppen.length).toFixed(4)}" data-y="${((H - unten - spitze) / H).toFixed(4)}" x="${(i * breiteGruppe).toFixed(1)}" y="0" width="${breiteGruppe.toFixed(1)}" height="${H}" fill="transparent" />`;
     const start = i * breiteGruppe + (breiteGruppe - breiteBalken * reihen.length - 4 * (reihen.length - 1)) / 2;
     reihen.forEach((r, j) => {
       const w = g.werte[r.id] || 0;
@@ -737,6 +801,14 @@ function balken(gruppen, reihen) {
     svg += `<text x="${(i * breiteGruppe + breiteGruppe / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="13" fill="#5A6172" font-family="Figtree, sans-serif">${esc(g.label)}</text>`;
   });
   return `${svg}</svg><p class="legende">${reihen.map((r) => `<span style="--farbe:${r.farbe}">${esc(r.name)}</span>`).join("")}</p>`;
+}
+
+// Antippbarer Punkt: Blase mit Wert, zweites Tippen öffnet die Aufträge dieses Zeitraums
+function tippAttr(p, text) {
+  const mitZeit = p.von instanceof Date && p.bis instanceof Date;
+  const n = mitZeit ? bezahltImZeitraum(p.von, p.bis).length : null;
+  const tipp = `${text}${n !== null ? ` · ${n} ${n === 1 ? "Auftrag" : "Aufträge"}` : ""}`;
+  return `data-tipp="${esc(tipp)}"${mitZeit ? ` data-von="${p.von.toISOString()}" data-bis="${p.bis.toISOString()}" data-titel="${esc(p.titel || p.label)}"` : ""}`;
 }
 
 // Liniendiagramm als SVG für 12-Monats-Zeitreihen
@@ -783,8 +855,9 @@ function linie(punkte, opts = {}) {
   punkte.forEach((p, i) => {
     const x = xPos(i);
     const y = yPos(p.wert);
-    svg += `<g class="diagramm__punkt"><circle cx="${x}" cy="${y}" r="14" fill="transparent" /><circle cx="${x}" cy="${y}" r="3.5" fill="#2B5CFF" />
-      <title>${esc(p.titel || p.label)}: ${esc(format(p.wert))}${p.quote != null ? ` · Ø ${p.quote} %` : ""}</title></g>`;
+    const text = `${p.titel || p.label}: ${format(p.wert)}${p.quote != null ? ` · Ø ${p.quote} %` : ""}`;
+    svg += `<g class="diagramm__punkt" ${tippAttr(p, text)} data-x="${(x / B).toFixed(4)}" data-y="${(y / H).toFixed(4)}"><circle cx="${x}" cy="${y}" r="16" fill="transparent" /><circle class="diagramm__kreis" cx="${x}" cy="${y}" r="3.5" fill="#2B5CFF" />
+      <title>${esc(text)}</title></g>`;
     if (i % Math.ceil(punkte.length / 12) && i !== punkte.length - 1) return;
     svg += `<text x="${x}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#5A6172" font-family="Figtree, sans-serif">${esc(p.label)}</text>`;
   });
@@ -870,6 +943,7 @@ function ansichtUebersicht() {
       ${kachel("Gewinn", euro(m.gewinn), `Ausgaben ${euro(m.ausgaben)}`, false, "#geld?zeige=gewinn", "gruen")}
       ${kachel("Marge", m.marge === null ? "–" : `${m.marge} %`, "Gewinn vom Umsatz", false, "#geld?zeige=marge", "violett")}
       ${kachel("Trinkgeld", euro(m.trinkgeld), tgQuote !== null ? `Ø ${tgQuote} % Trinkgeld` : "diesen Monat", false, "#geld?zeige=trinkgeld", "bernstein")}
+      ${(() => { const nk = neukundenIm(zeitraumGrenzen("monat", new Date()).von, zeitraumGrenzen("monat", new Date()).bis); return kachel("Neukunden", `${nk.neu} neu`, `davon ${nk.mit} mit Auftrag`, false, "#geld?zeige=neukunden", "himmel"); })()}
       ${kachel("Kassenstand", euro(kassenstand()), "so viel Bargeld sollte da sein", true, "#geld?zeige=kasse", "kasse")}
     </section>
 
@@ -1008,14 +1082,90 @@ function kanalAuswertung() {
 }
 
 function nachFaelligkeit(a, b) {
-  return (a.faellig || "9999") < (b.faellig || "9999") ? -1 : (a.faellig || "9999") > (b.faellig || "9999") ? 1 : 0;
+  const x = `${a.faellig || "9999"} ${a.uhrzeit || "99"}`;
+  const y = `${b.faellig || "9999"} ${b.uhrzeit || "99"}`;
+  return x < y ? -1 : x > y ? 1 : 0;
 }
+
+// Offene Aufgaben in Abschnitte: heute fällig (inkl. überfällig), bald (nächste 7 Tage), später / ohne Tag
+function aufgabenAbschnitte(liste) {
+  const heute = heuteIso();
+  const bald = isoAusDatum(tagPlus(new Date(), 7));
+  return [
+    ["Heute fällig", liste.filter((a) => a.faellig && a.faellig <= heute)],
+    ["Bald", liste.filter((a) => a.faellig && a.faellig > heute && a.faellig <= bald)],
+    ["Später", liste.filter((a) => !a.faellig || a.faellig > bald)],
+  ].filter(([, l]) => l.length);
+}
+const aufgabeZeitText = (a) => `${a.uhrzeit ? ` · ${a.uhrzeit.slice(0, 5)} Uhr` : ""}${a.push ? ` · 🔔${a.vorlauf_min ? ` ${vorlaufText(a.vorlauf_min)}` : ""}` : ""}`;
 
 function naechsterTermin(kundeId) {
   return kommendeTermine().find((a) => a.kunde_id === kundeId);
 }
 
+// Kunden-Seite, Ansicht „Aufträge“: alle vergangenen Aufträge, neueste zuerst
+function auftraegeListe() {
+  const q = zustand.suche.trim().toLowerCase();
+  const z = zustand.auftraegeZeitraum;
+  const jetzt = new Date();
+  return daten.auftraege
+    .filter((a) => !istTermin(a) && !a.abgesagt && (zahl(a.bekommen) !== null || (a.datum && !a.vorlaeufig && new Date(a.datum) < jetzt)))
+    .filter((a) => !z || (auftragDatum(a) >= z.von && auftragDatum(a) < z.bis))
+    .filter((a) => {
+      if (!q) return true;
+      const k = kundeVon(a.kunde_id) || {};
+      return [k.name, k.adresse, k.telefon, a.leistung, a.notiz].some((x) => (x || "").toLowerCase().includes(q));
+    })
+    .sort((a, b) => auftragDatum(b) - auftragDatum(a));
+}
+
+const auftragBetragText = (a) => (zahl(a.bekommen) !== null ? euro(a.bekommen) : zahl(a.geschaetzt) !== null ? `~${euro(a.geschaetzt)}` : "offen");
+
+function kundenUmschalter() {
+  const i = zustand.kundenAnsicht === "auftraege" ? 1 : 0;
+  return `<div class="segment segment--zwei kunden-umschalter" role="group" aria-label="Ansicht wählen">
+    <span class="segment__pille" aria-hidden="true" data-ziel="${i}" style="--i:${i}"></span>
+    <button class="segment__knopf" type="button" aria-pressed="${i === 0}" data-aktion="kunden-ansicht" data-wert="kunden">Kunden</button>
+    <button class="segment__knopf" type="button" aria-pressed="${i === 1}" data-aktion="kunden-ansicht" data-wert="auftraege">Aufträge</button>
+  </div>`;
+}
+
+function zeitraumFilterText() {
+  const z = zustand.auftraegeZeitraum;
+  return z ? `<p class="zeitraum-filter">Nur ${esc(z.titel)} <button class="knopf knopf--klein knopf--leise" type="button" data-aktion="auftraege-zeitraum-weg">Alle zeigen</button></p>` : "";
+}
+
+function ansichtAuftraegeListe() {
+  const liste = auftraegeListe();
+  const summe = liste.reduce((s, a) => s + (zahl(a.bekommen) || 0), 0);
+  return `
+    <div class="kopfzeile">
+      <div><h1>Aufträge</h1><p class="leise">${liste.length} ${liste.length === 1 ? "Auftrag" : "Aufträge"}${summe ? ` · ${euro(summe)} bekommen` : ""}</p></div>
+      ${kundenUmschalter()}
+    </div>
+    <label class="feld">
+      <span class="visually-hidden" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)">Aufträge suchen</span>
+      <input class="eingabe" id="suche" type="search" placeholder="Name, Straße oder Leistung suchen" value="${esc(zustand.suche)}" data-suche autocomplete="off" />
+    </label>
+    ${zeitraumFilterText()}
+    <section class="karte">
+      ${liste.length ? `<ul class="liste">${liste.map((a) => {
+        const k = kundeVon(a.kunde_id);
+        const d = auftragDatum(a);
+        return `<li><button class="zeile zeile--knopf" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}">
+          ${datumMarke(d.toISOString())}
+          <span class="zeile__haupt">
+            <span class="zeile__titel">${kanalMarke(a.kanal)}${esc(auftragName(a))}</span>
+            <span class="zeile__unter">${esc(fmtDatum.format(d))} · ${esc(a.leistung || "")}${a.team?.length ? ` · ${esc(teamVon(a).join(", "))}` : ""}${k?.adresse ? ` · ${esc(k.adresse)}` : ""}</span>
+          </span>
+          <span class="zeile__rechts${zahl(a.bekommen) === null ? " minus" : ""}">${auftragBetragText(a)}</span>
+        </button></li>`;
+      }).join("")}</ul>` : `<p class="leer">${zustand.suche || zustand.auftraegeZeitraum ? "Nichts gefunden." : "Noch keine vergangenen Aufträge."}</p>`}
+    </section>`;
+}
+
 function ansichtKunden() {
+  if (zustand.kundenAnsicht === "auftraege") return ansichtAuftraegeListe();
   const q = zustand.suche.trim().toLowerCase();
   const passt = (k) => !q || [k.name, k.adresse, k.telefon, k.email].some((f) => (f || "").toLowerCase().includes(q));
   const gesucht = daten.kunden.filter(passt);
@@ -1036,6 +1186,7 @@ function ansichtKunden() {
   return `
     <div class="kopfzeile">
       <div><h1>Kunden</h1><p class="leise">${daten.kunden.length} insgesamt</p></div>
+      ${kundenUmschalter()}
       <button class="knopf knopf--voll${istHandy() ? " knopf--gross" : ""}" type="button" data-aktion="kunde-neu">${istHandy() ? "+ Kunde" : "Kunde anlegen"}</button>
     </div>
     <label class="feld">
@@ -1286,9 +1437,34 @@ function diagrammFuer(zeige, zeitraum, stichtag) {
 
   const { untertitel, punkte } = zeitreihe(zeitraum, stichtag);
   const betitel = (name) => `${name} · ${untertitel}`;
-  const reihe = (wertVon) => punkte.map((p) => ({ label: p.label, titel: p.titel, ...wertVon(p.von, p.bis) }));
+  const reihe = (wertVon) => punkte.map((p) => ({ label: p.label, titel: p.titel, von: p.von, bis: p.bis, ...wertVon(p.von, p.bis) }));
   const feld = (name) => reihe((von, bis) => ({ wert: zahlenFuer(von, bis)[name] }));
 
+  if (zeige === "neukunden") {
+    const nk = neukundenIm(g.von, g.bis);
+    const gruppen = punkte.map((pk) => {
+      const x = neukundenIm(pk.von, pk.bis);
+      return { label: pk.label, titel: pk.titel, von: pk.von, bis: pk.bis, werte: { neu: x.neu, mit: x.mit } };
+    });
+    return {
+      titel: betitel("Neukunden"),
+      wert: `${nk.neu} neu · ${nk.mit} mit Auftrag`,
+      diagramm: balken(gruppen, [{ id: "neu", name: "Neu", farbe: "#0FA3B1" }, { id: "mit", name: "Mit Auftrag", farbe: "#2B5CFF" }], String),
+    };
+  }
+  if (zeige === "hochrechnung") {
+    const h = hochrechnungMonat();
+    const zeilen = h.rest.sort((a, b) => new Date(a.datum) - new Date(b.datum)).map((a) => `<li><button class="zeile zeile--knopf" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}" data-diagramm-zu>
+      ${datumMarke(a.datum)}
+      <span class="zeile__haupt"><span class="zeile__titel">${esc(auftragName(a))}</span><span class="zeile__unter">${esc(fmtTag.format(new Date(a.datum)))} · ${esc(a.leistung || "")}${a.vorlaeufig ? " · noch nicht fest" : ""}</span></span>
+      <span class="zeile__rechts leise">${zahl(a.geschaetzt) !== null ? `~${euro(a.geschaetzt)}` : `Ø ${euro(h.schnitt)}`}</span>
+    </button></li>`).join("");
+    return {
+      titel: `Hochrechnung ${h.monat}`,
+      wert: `~${euro(h.gesamt)}`,
+      diagramm: `<p class="hinweis">${euro(h.bekommen)} schon bekommen + ${euro(h.offen)} geschätzt für ${h.rest.length} offene ${h.rest.length === 1 ? "Auftrag" : "Aufträge"}${h.ohneSchaetzung ? ` (${h.ohneSchaetzung} ohne Schätzung, dafür Ø ${euro(h.schnitt)})` : ""}.</p>${zeilen ? `<ul class="liste">${zeilen}</ul>` : ""}`,
+    };
+  }
   if (zeige === "marge") {
     return {
       titel: betitel("Marge"),
@@ -1316,13 +1492,13 @@ function diagrammFuer(zeige, zeitraum, stichtag) {
     const k = kennzahlenFuer(g.von, g.bis);
     const kz = (fn) => reihe((von, bis) => ({ wert: Math.round((fn(kennzahlenFuer(von, bis)) || 0) * 100) / 100 }));
     if (zeige === "kz-auftrag") return { titel: betitel("Ø pro Auftrag"), wert: euroOder(k.proAuftrag), diagramm: linie(kz((x) => x.proAuftrag), { format: euro }) };
-    if (zeige === "kz-stunde") return { titel: betitel("Ø pro Stunde"), wert: euroOder(k.proStunde), diagramm: linie(kz((x) => x.proStunde), { format: euro }) + `<p class="hinweis">${k.auftraege ? `${stundenText(k.stunden * 60)} gearbeitet · ${k.geschaetzt} von ${k.auftraege} Dauern geschätzt (keine echte Dauer eingetragen)` : ""}</p>` };
+    if (zeige === "kz-stunde") return { titel: betitel("Ø pro Stunde & Person"), wert: euroOder(k.proStundePerson), diagramm: linie(kz((x) => x.proStundePerson), { format: euro }) + `<p class="hinweis">${k.auftraege ? `Zusammen ${euroOder(k.proStunde)} pro Stunde · ${stundenText(k.stunden * 60)} gearbeitet · ${k.geschaetzt} von ${k.auftraege} Dauern geschätzt (keine echte Dauer eingetragen)` : ""}</p>` };
     if (zeige === "kz-fenster") return { titel: betitel("Ø pro Fenster"), wert: euroOder(k.proFenster), diagramm: linie(kz((x) => x.proFenster), { format: euro }) };
     if (zeige === "kz-kasse") return { titel: betitel("Kasse pro Stunde"), wert: euroOder(k.kasseProStunde), diagramm: linie(kz((x) => x.kasseProStunde), { format: euro }) };
     // Löhne: Balken pro Person und Zeitabschnitt, darunter die Namen zum Anklicken
     const namen = [...new Set(daten.auszahlungen.filter((x) => x.art === "lohn").map((x) => x.an))].sort((a, b) => a.localeCompare(b, "de"));
     const FARBEN = ["#5B3FD6", "#2B5CFF", "#D08A00", "#1E9E5A", "#E67C73", "#0F7A4B"];
-    const gruppen = punkte.map((pk) => ({ label: pk.label, werte: kennzahlenFuer(pk.von, pk.bis).proPerson }));
+    const gruppen = punkte.map((pk) => ({ label: pk.label, titel: pk.titel, von: pk.von, bis: pk.bis, werte: kennzahlenFuer(pk.von, pk.bis).proPerson }));
     const liste = namen.length
       ? `<ul class="liste lohn-liste">${namen.map((n) => `<li><a class="zeile" href="#mitarbeiter/${encodeURIComponent(n)}" data-diagramm-zu><span class="zeile__haupt"><span class="zeile__titel">${esc(n)}</span></span><span class="zeile__rechts">${euro(k.proPerson[n] || 0)}</span></a></li>`).join("")}</ul>`
       : `<p class="leer">Noch keine Löhne.</p>`;
@@ -1346,38 +1522,27 @@ const aktuellerZeitraum = () => zustand.geldZeitraum;
 
 // Aufteilung 50/50 (nur Desktop): wer bekommt noch wie viel
 function aufteilungKarte() {
-  const t = aufteilung();
+  const ks = konten();
   const kasse = kassenstand();
   const farbe = { Louis: "blau", Lukas: "violett" };
-  const kachelFuer = (p) => {
-    const rund = Math.round(p.noch * 100) / 100;
-    if (rund === 0) return kachel(p.name, euro(0), "alles ausgeglichen", false, null, farbe[p.name]);
-    if (rund > 0) return kachel(p.name, euro(rund), "bekommt noch", false, null, farbe[p.name]);
-    return kachel(p.name, `<span class="minus">${euro(-rund)}</span>`, `<span class="minus">hat zu viel</span>`, false, null, farbe[p.name]);
-  };
-  const zeile = (titel, wert) =>
-    `<div class="aufteilung__zeile"><span class="leise">${titel}</span>${t.personen.map((p) => `<span>${euro(wert(p))}</span>`).join("")}</div>`;
-  const ausgeglichen = t.personen.every((p) => Math.abs(p.noch) < 0.005);
-  let satz = "Bisher haben beide gleich viel ausgezahlt.";
-  if (ausgeglichen) satz = "Alles ausgeglichen.";
-  else if (t.D >= 0.005) satz = `${t.vorne.name} hat sich ${euro(t.D)} mehr ausgezahlt – die nächsten ${euro(t.D)} gehen an ${t.hinten.name}.`;
-  if (t.D > kasse + 0.005) satz += " Dafür reicht die Kasse gerade noch nicht.";
-  const ausgleich =
-    t.D >= 0.005 && t.D <= kasse + 0.005
-      ? `<button class="knopf knopf--voll knopf--klein" type="button" data-aktion="ausgleich">Ausgleich auszahlen</button>`
-      : "";
+  const kachelFuer = (p) =>
+    p.guthaben < -0.004
+      ? kachel(p.name, `<span class="minus">${euro(p.guthaben)}</span>`, `<span class="minus">im Minus</span>`, false, null, farbe[p.name])
+      : kachel(p.name, euro(p.guthaben), "auf dem Konto", false, null, farbe[p.name]);
+  const zeile = (titel, wert, vz = "") =>
+    `<div class="aufteilung__zeile"><span class="leise">${titel}</span>${ks.map((p) => `<span>${wert(p) ? vz : ""}${euro(wert(p))}</span>`).join("")}</div>`;
   return `<section class="karte" aria-labelledby="t-aufteilung">
-    ${kartenTitel("t-aufteilung", "violett", "zahl", "Aufteilung 50/50")}
-    <div class="aufteilung__kacheln">${t.personen.map(kachelFuer).join("")}</div>
+    ${kartenTitel("t-aufteilung", "violett", "zahl", "Eure Konten")}
+    <div class="aufteilung__kacheln">${ks.map(kachelFuer).join("")}</div>
     <div class="aufteilung__zeilen">
-      <div class="aufteilung__zeile aufteilung__zeile--kopf"><span></span>${t.personen.map((p) => `<span>${esc(p.name)}</span>`).join("")}</div>
-      ${zeile("Anteil gesamt", (p) => p.anteil)}
-      ${zeile("schon ausgezahlt", (p) => p.bereitsAnteil)}
-      ${zeile("Erstattung offen", (p) => p.erstattungOffen)}
+      <div class="aufteilung__zeile aufteilung__zeile--kopf"><span></span>${ks.map((p) => `<span>${esc(p.name)}</span>`).join("")}</div>
+      ${zeile("aus Aufträgen", (p) => p.auftraege, "+")}
+      ${zeile("selbst ausgelegt", (p) => p.ausgelegt, "+")}
+      ${zeile("Ausgaben (Hälfte)", (p) => p.ausgaben, "−")}
+      ${zeile("schon ausgezahlt", (p) => p.ausgezahlt, "−")}
     </div>
-    <p class="aufteilung__satz">${esc(satz)}</p>
-    ${ausgleich}
-    <p class="hinweis">Der Gewinn wird immer 50/50 geteilt, egal wer gearbeitet hat. Erstattungen zählen nicht als Anteil.</p>
+    <div class="knopfreihe">${ks.map((p) => `<button class="knopf knopf--klein${p.guthaben > 0.004 ? " knopf--voll" : ""}" type="button" data-aktion="konto-auszahlen" data-wert="${esc(p.name)}">${esc(p.name)} auszahlen</button>`).join("")}</div>
+    <p class="hinweis">Zusammen ${euro(ks.reduce((s, p) => s + p.guthaben, 0))} = Kassenstand ${euro(kasse)}. Allein: ${alleinStandard()} / ${100 - alleinStandard()} · Beide da: ${louisStandard()} / ${100 - louisStandard()} · Ausgaben halbe-halbe.</p>
   </section>`;
 }
 
@@ -1400,15 +1565,42 @@ function zeitraumWahl(g) {
 }
 
 // Nur am Computer: Durchschnitte, folgen dem Zeitraum oben
+// Neue Kunden im Zeitraum, davon wie viele schon einen Auftrag haben
+function neukundenIm(von, bis) {
+  const neu = daten.kunden.filter((k) => k.erstellt && new Date(k.erstellt) >= von && new Date(k.erstellt) < bis);
+  const mit = neu.filter((k) => daten.auftraege.some((a) => a.kunde_id === k.id && !a.abgesagt && !istTermin(a)));
+  return { neu: neu.length, mit: mit.length };
+}
+
+// Hochrechnung für den laufenden Monat: schon bekommen + Schätzung der restlichen Aufträge
+function hochrechnungMonat() {
+  const g = zeitraumGrenzen("monat", new Date());
+  const bekommen = zahlenFuer(g.von, g.bis).umsatz;
+  const bezahlt = daten.auftraege.filter((a) => zahl(a.bekommen) !== null);
+  const schnitt = bezahlt.length ? bezahlt.reduce((s, a) => s + Number(a.bekommen), 0) / bezahlt.length : 0;
+  const rest = daten.auftraege.filter((a) => !istTermin(a) && !a.abgesagt && zahl(a.bekommen) === null && a.datum && new Date(a.datum) >= g.von && new Date(a.datum) < g.bis);
+  const offen = rest.reduce((s, a) => s + (zahl(a.geschaetzt) !== null ? Number(a.geschaetzt) : schnitt), 0);
+  const ohneSchaetzung = rest.filter((a) => zahl(a.geschaetzt) === null).length;
+  return { bekommen, offen, gesamt: bekommen + offen, rest, schnitt, ohneSchaetzung, monat: fmtMonat.format(g.von).split(" ")[0] };
+}
+
+const istLaufenderMonat = (g) => aktuellerZeitraum() === "monat" && g.von <= new Date() && new Date() < g.bis;
+
 function kennzahlenReihe(g) {
   const k = kennzahlenFuer(g.von, g.bis);
   const kacheln = [
     ["kz-auftrag", "Ø pro Auftrag", euroOder(k.proAuftrag), `${k.auftraege} bezahlt`, "blau"],
-    ["kz-stunde", "Ø pro Stunde", euroOder(k.proStunde), k.auftraege ? `${stundenText(k.stunden * 60)}${k.geschaetzt ? ` · ${k.geschaetzt} von ${k.auftraege} geschätzt` : ""}` : "", "gruen"],
+    ["kz-stunde", "Ø pro Stunde & Person", euroOder(k.proStundePerson), k.auftraege ? `zusammen ${euroOder(k.proStunde)} · ${stundenText(k.stunden * 60)}${k.geschaetzt ? ` · ${k.geschaetzt} geschätzt` : ""}` : "", "gruen"],
     ["kz-fenster", "Ø pro Fenster", euroOder(k.proFenster), k.fensterProAuftrag ? `Ø ${Math.round(k.fensterProAuftrag * 10) / 10} Fenster pro Auftrag`.replace(".", ",") : "", "himmel"],
     ["kz-loehne", "Löhne", euro(k.loehne), Object.keys(k.proPerson).length ? Object.entries(k.proPerson).map(([n, b]) => `${esc(n)} ${euro(b)}`).join(" · ") : "an Mitarbeiter", "violett"],
     ["kz-kasse", "Kasse pro Stunde", euroOder(k.kasseProStunde), "nach den Löhnen", "bernstein"],
   ];
+  const nk = neukundenIm(g.von, g.bis);
+  kacheln.push(["neukunden", "Neukunden", `${nk.neu} neu`, `davon ${nk.mit} mit Auftrag`, "himmel"]);
+  if (istLaufenderMonat(g)) {
+    const h = hochrechnungMonat();
+    kacheln.push(["hochrechnung", `Hochrechnung ${esc(h.monat)}`, `~${euro(h.gesamt)}`, `${euro(h.bekommen)} da + ${h.rest.length} offen`, "gruen"]);
+  }
   return `<section class="kennzahlen" aria-labelledby="t-kennzahlen">
     <h2 class="kennzahlen__titel" id="t-kennzahlen">Kennzahlen</h2>
     <div class="raster raster--kacheln raster--kennzahlen">
@@ -1533,9 +1725,9 @@ function ansichtAufgaben() {
     <div class="chips" role="group" aria-label="Aufgaben filtern">
       ${filter.map(([wert, name]) => `<button class="chip" type="button" aria-pressed="${f === wert}" data-aktion="aufgaben-filter" data-wert="${wert}">${name}</button>`).join("")}
     </div>
-    <section class="karte">
-      ${liste.length ? `<ul class="liste">${liste.map(aufgabeZeile).join("")}</ul>` : `<p class="leer">${f === "erledigt" ? "Noch nichts erledigt." : "Nichts offen. Stark."}</p>`}
-    </section>
+    ${!liste.length ? `<section class="karte"><p class="leer">${f === "erledigt" ? "Noch nichts erledigt." : "Nichts offen. Stark."}</p></section>`
+      : f === "erledigt" ? `<section class="karte"><ul class="liste">${liste.map(aufgabeZeile).join("")}</ul></section>`
+      : aufgabenAbschnitte(liste).map(([titel, l]) => `<section class="karte aufgaben-abschnitt"><h2 class="aufgaben-abschnitt__titel">${titel} <span class="leise">${l.length}</span></h2><ul class="liste">${l.map(aufgabeZeile).join("")}</ul></section>`).join("")}
     ${istIos ? `<p class="hinweis">„In OutPost“ legt die Aufgabe in deiner Erinnerungen-Liste „Klar Glas“ an.</p>` : ""}`;
 }
 
@@ -1555,8 +1747,19 @@ function teamKarte() {
     <div class="karte__kopf">${kartenTitel("t-team", "gruen", "kunden", "Team")}<button class="knopf knopf--klein knopf--voll" type="button" data-aktion="mitarbeiter-neu">Mitarbeiter hinzufügen</button></div>
     <label class="feld team-anteil"><span>Anteil pro Kopf</span>
       <span class="eingabe-euro"><input type="number" class="eingabe" inputmode="decimal" min="0" max="100" step="1" value="${esc(standardAnteil())}" data-einstell="true" data-einstell-field="anteil_prozent" /><span aria-hidden="true">%</span></span>
-      <small class="leise">Jeder, der mitarbeitet, nimmt so viel vom Betrag bar mit. Seid ihr beide dabei, geht alles in die Kasse. Im Auftrag lässt es sich ändern.</small>
+      <small class="leise">So viel nimmt ein Mitarbeiter bar mit. Ist einer von euch mit ihm da, kommt derselbe Anteil auf dessen Konto, der Rest wird geteilt.</small>
     </label>
+    <div class="feldreihe">
+      <label class="feld team-anteil"><span>Einer von euch allein</span>
+        <span class="eingabe-euro"><input type="number" class="eingabe" inputmode="decimal" min="0" max="100" step="1" value="${esc(alleinStandard())}" data-einstell="true" data-einstell-field="allein_prozent" /><span aria-hidden="true">%</span></span>
+        <small class="leise">So viel kriegt, wer allein war. Der andere ${100 - alleinStandard()} %.</small>
+      </label>
+      <label class="feld team-anteil"><span>Ihr beide: Louis-Anteil</span>
+        <span class="eingabe-euro"><input type="number" class="eingabe" inputmode="decimal" min="0" max="100" step="1" value="${esc(louisStandard())}" data-einstell="true" data-einstell-field="beide_louis_prozent" /><span aria-hidden="true">%</span></span>
+        <small class="leise">Lukas bekommt ${100 - louisStandard()} %. Gilt auch für den Rest, wenn ein Mitarbeiter dabei ist.</small>
+      </label>
+    </div>
+    <p class="hinweis">Änderungen gelten nur für neue Aufträge – bezahlte behalten ihre Prozente.</p>
     <ul class="liste team-liste">
       ${PERSONEN.map((n) => zeile(n, "Chef")).join("")}
       ${alle.map((m) => zeile(m.name, m.aktiv === false ? "archiviert" : "Mitarbeiter", m.aktiv === false)).join("")}
@@ -1987,7 +2190,7 @@ dialogForm.addEventListener("submit", async (event) => {
   const knopf = dialogForm.querySelector("[type=submit]");
   knopf.disabled = true;
   try {
-    await dialogAbsenden(Object.fromEntries(new FormData(dialogForm).entries()), dialogForm);
+    if ((await dialogAbsenden(Object.fromEntries(new FormData(dialogForm).entries()), dialogForm)) === false) return;
     dialog.close();
     render();
     karteZurueckOeffnen();
@@ -2017,8 +2220,46 @@ function oeffneDiagramm(zeige) {
 
 // Klick auf den Hintergrund (das Dialog-Element selbst) oder auf den Schließen-Knopf schließt
 diagrammDialog.addEventListener("click", (e) => {
-  if (e.target === diagrammDialog || e.target.closest("[data-diagramm-zu]")) diagrammDialog.close();
+  if (e.target === diagrammDialog || e.target.closest("[data-diagramm-zu]")) return diagrammDialog.close();
+  const punkt = e.target.closest(".diagramm__punkt[data-tipp]");
+  if (punkt) diagrammTippen(punkt);
+  else diagrammDialog.querySelectorAll(".diagramm-tipp").forEach((t) => t.remove());
 });
+
+// Erstes Tippen: Blase mit Wert. Zweites Tippen auf denselben Punkt: Aufträge dieses Zeitraums
+function diagrammTippen(punkt) {
+  const svg = punkt.closest("svg");
+  const box = svg.parentElement;
+  const alt = $(".diagramm-tipp", box);
+  if (alt && alt.dataset.fuer === punkt.dataset.tipp && punkt.dataset.von) {
+    diagrammDialog.close();
+    return auftraegeZeigen(new Date(punkt.dataset.von), new Date(punkt.dataset.bis), punkt.dataset.titel);
+  }
+  diagrammDialog.querySelectorAll(".diagramm-tipp").forEach((t) => t.remove());
+  svg.querySelectorAll(".diagramm__punkt.ist-aktiv").forEach((p) => p.classList.remove("ist-aktiv"));
+  punkt.classList.add("ist-aktiv");
+  const tipp = document.createElement("div");
+  tipp.className = "diagramm-tipp";
+  tipp.dataset.fuer = punkt.dataset.tipp;
+  tipp.innerHTML = `${esc(punkt.dataset.tipp)}${punkt.dataset.von ? `<small>Nochmal tippen: Aufträge ansehen</small>` : ""}`;
+  box.style.position = "relative";
+  box.appendChild(tipp);
+  const sb = svg.getBoundingClientRect();
+  const bb = box.getBoundingClientRect();
+  const x = sb.left - bb.left + Number(punkt.dataset.x) * sb.width;
+  const y = sb.top - bb.top + Number(punkt.dataset.y) * sb.height;
+  const halb = tipp.offsetWidth / 2;
+  tipp.style.left = `${Math.min(Math.max(x, halb + 4), bb.width - halb - 4)}px`;
+  tipp.style.top = `${Math.max(y - 10, tipp.offsetHeight + 4)}px`;
+}
+
+function auftraegeZeigen(von, bis, titel) {
+  zustand.kundenAnsicht = "auftraege";
+  zustand.auftraegeZeitraum = { von, bis, titel };
+  zustand.suche = "";
+  if (location.hash === "#kunden") render();
+  else location.hash = "#kunden";
+}
 
 const optionen = (liste, gewaehlt) =>
   liste.map((o) => {
@@ -2062,7 +2303,9 @@ function dialogKunde(k = {}) {
   });
 }
 
+let dialogAuftragAktuell = {}; // für die Handy-Vorschau der Aufteilung
 function dialogAuftrag(a = {}, kundeId = null) {
+  dialogAuftragAktuell = a;
   const kid = a.kunde_id || kundeId;
   const kunden = [...daten.kunden].sort((x, y) => x.name.localeCompare(y.name, "de"));
   if (!kunden.length) {
@@ -2072,7 +2315,6 @@ function dialogAuftrag(a = {}, kundeId = null) {
   const leistung = a.leistung || "Fensterreinigung";
   const p = preise();
   const preisart = a.preisart || "stunden";
-  const kanalVorbelegt = a.kanal || (a.id ? null : kanalAusKunde(kundeVon(kid)));
   oeffneDialog({
     titel: a.id ? "Auftrag bearbeiten" : "Neuer Auftrag",
     felder: `
@@ -2111,7 +2353,6 @@ function dialogAuftrag(a = {}, kundeId = null) {
       </div>
       <p class="hinweis lohn-vorschau" data-lohn-vorschau></p>
       ${vorlaeufigSchalter(a)}
-      ${kanalWahl(kanalVorbelegt)}
       <label class="feld"><span>Notizen zum Auftrag</span><textarea name="notiz" rows="3" placeholder="Zum Beispiel: Hund im Garten, Leiter mitbringen, Schlüssel beim Nachbarn">${esc(a.notiz)}</textarea></label>
       ${a.id ? `<label class="feld" style="grid-template-columns:auto 1fr;align-items:center;gap:.6rem"><input type="checkbox" name="abgesagt" ${a.abgesagt ? "checked" : ""} style="width:22px;min-height:22px" /><span>Abgesagt</span></label>` : ""}`,
     nachOeffnen: (form) => {
@@ -2132,7 +2373,7 @@ function dialogAuftrag(a = {}, kundeId = null) {
           : s === null ? "" : `Rechnung: ${fensterArt ? `${werte.fenster_normal || 0} × ${euro(p.preis_normal)} + ${werte.fenster_boden || 0} × ${euro(p.preis_boden)}, mindestens ${euro(p.mindestpreis)}` : `${Number(werte.stunden).toLocaleString("de-DE")} h × ${euro(satz)}`} = ${euro(s)}`;
         if (!vonHand && s !== null) feld.value = s;
         const betrag = zahl(werte.bekommen) ?? zahl(feld.value);
-        const teil = lohnAufteilung({ bekommen: betrag, team: teamAusForm(form), prozent: zahl(werte.anteil_prozent) ?? standardAnteil() });
+        const teil = lohnAufteilung({ bekommen: betrag, team: teamAusForm(form), prozent: zahl(werte.anteil_prozent) ?? standardAnteil(), allein: alleinVon(a), louis: louisVon(a) });
         $("[data-lohn-vorschau]", form).innerHTML = `${zahl(werte.bekommen) === null ? "Bei " + euro(betrag || 0) + ": " : ""}${aufteilungText(teil, betrag)}`;
       };
       feld.addEventListener("input", () => (vonHand = true));
@@ -2140,7 +2381,6 @@ function dialogAuftrag(a = {}, kundeId = null) {
       aktualisieren();
     },
     absenden: async (f, form) => {
-      if (!f.kanal) throw new Error("Bitte wähle, wie der Kunde auf uns zukam.");
       const team = teamAusForm(form);
       if (!team.length) throw new Error("Bitte ankreuzen, wer mitarbeitet.");
       const fensterArt = f.leistung === "Fensterreinigung";
@@ -2156,7 +2396,8 @@ function dialogAuftrag(a = {}, kundeId = null) {
         geschaetzt: zahl(f.geschaetzt),
         bekommen: zahl(f.bekommen),
         abgesagt: Boolean(f.abgesagt),
-        kanal: f.kanal,
+        // Woher der Kunde kommt, steht seit v18 nur noch beim Kunden
+        kanal: a.kanal || kanalAusKunde(kundeVon(f.kunde_id)),
         vorlaeufig: Boolean(f.vorlaeufig) && Boolean(f.datum),
         notiz: (f.notiz || "").trim() || null,
         team,
@@ -2196,12 +2437,15 @@ const gleicheZeit = (x, y) => (x ? new Date(x).getTime() : null) === (y ? new Da
 async function statusNachTermin(kundeId, zeile) {
   const k = kundeVon(kundeId);
   // Bezahlte oder vergangene Termine schieben niemanden mehr zurück
-  if (!k || !zeile.datum || zeile.abgesagt || zahl(zeile.bekommen) !== null || new Date(zeile.datum) < new Date()) return;
-  const ziel = zeile.vorlaeufig ? "geplant" : "termin";
-  const darf = zeile.vorlaeufig ? ["neu", "kontakt", "erledigt", "abgesagt"] : ["neu", "kontakt", "geplant", "erledigt", "abgesagt"];
+  if (!k || zeile.abgesagt || zahl(zeile.bekommen) !== null || (zeile.datum && new Date(zeile.datum) < new Date())) return;
+  // Ohne Datum oder vorläufig = „Termin geplant“, festes Datum = „Termin steht“
+  const offen = zeile.vorlaeufig || !zeile.datum;
+  const ziel = offen ? "geplant" : "termin";
+  const darf = offen ? ["neu", "kontakt", "erledigt", "abgesagt"] : ["neu", "kontakt", "geplant", "erledigt", "abgesagt"];
   if (k.status === ziel || !darf.includes(k.status)) return;
   await aendern("kunden", k.id, { status: ziel });
-  await notiz(k.id, `${zeile.vorlaeufig ? "Vorläufiger Termin" : "Termin"} am ${fmtTag.format(new Date(zeile.datum))}, ${fmtUhr.format(new Date(zeile.datum))} Uhr · Status → ${STATUS_NAME[ziel]}`);
+  const wann = zeile.datum ? ` am ${fmtTag.format(new Date(zeile.datum))}, ${fmtUhr.format(new Date(zeile.datum))} Uhr` : " (noch ohne Datum)";
+  await notiz(k.id, `${zeile.vorlaeufig ? "Vorläufiger Termin" : zeile.datum ? "Termin" : "Auftrag"}${wann} · Status → ${STATUS_NAME[ziel]}`);
 }
 
 // Google-Kalender „Klar Glas“ nachziehen: eintragen, verschieben oder austragen. Fehler stören das Speichern nicht.
@@ -2363,7 +2607,7 @@ function dialogAusgabe(x = {}) {
       </div>
       <div class="feldreihe">
         <label class="feld"><span>Wofür</span><select name="kategorie">${optionen(KATEGORIEN, x.kategorie)}</select></label>
-        <label class="feld"><span>Bezahlt von</span><select name="bezahlt_von">${optionen([["Kasse", "Unternehmenskasse"], ...PERSONEN.map((p) => [p, `${p} (privat ausgelegt)`])], x.bezahlt_von || "Kasse")}</select></label>
+        <label class="feld"><span>Bezahlt von</span><select name="bezahlt_von">${optionen([["Kasse", "Unternehmenskasse"], ...PERSONEN.map((p) => [p, `${p} (privat, kommt aufs Konto)`])], x.bezahlt_von || "Kasse")}</select></label>
       </div>
       <label class="feld"><span>Notiz</span><input name="notiz" value="${esc(x.notiz)}" placeholder="Zum Beispiel: neuer Abzieher" /></label>`,
     absenden: async (f) => {
@@ -2377,7 +2621,7 @@ function dialogAusgabe(x = {}) {
 
 function dialogAuszahlung(x = {}) {
   oeffneDialog({
-    titel: x.id ? "Auszahlung bearbeiten" : "Auszahlung aus der Kasse",
+    titel: x.id ? "Auszahlung bearbeiten" : "Auszahlung vom Konto",
     felder: `
       <div class="feldreihe">
         <label class="feld"><span>Betrag (€)</span><input name="betrag" type="number" inputmode="decimal" min="0" step="0.01" required value="${esc(x.betrag ?? "")}" /></label>
@@ -2385,9 +2629,21 @@ function dialogAuszahlung(x = {}) {
       </div>
       <label class="feld"><span>An</span><select name="an">${optionen([...PERSONEN, ["Beide", "Louis und Lukas (je die Hälfte)"]], x.an || ich)}</select></label>
       <label class="feld"><span>Notiz</span><input name="notiz" value="${esc(x.notiz)}" /></label>
-      <p class="hinweis">Kassenstand gerade: ${euro(kassenstand())}</p>`,
+      <p class="hinweis" data-konto-hinweis></p>`,
+    nachOeffnen: (form) => {
+      const zeigen = () => {
+        const an = form.elements.an.value;
+        const teil = an === "Beide" ? konten().map((p) => `${p.name} ${euro(p.guthaben)}`).join(" · ") : `${an}s Konto: ${euro(guthabenVon(an) + (x.id && x.an === an ? Number(x.betrag) : 0))}`;
+        const ziel = $("[data-konto-hinweis]", form);
+        if (ziel) ziel.textContent = `${teil} · Kasse gesamt ${euro(kassenstand())}`;
+      };
+      form.elements.an.addEventListener("change", zeigen);
+      zeigen();
+    },
     absenden: async (f) => {
       const zeile = { betrag: Number(f.betrag), datum: f.datum, an: f.an, notiz: f.notiz.trim() || null };
+      const frei = f.an === "Beide" ? Math.min(...konten().map((p) => p.guthaben)) * 2 : guthabenVon(f.an) + (x.id && x.an === f.an ? Number(x.betrag) : 0);
+      if (zeile.betrag > frei + 0.004 && !confirm(`Das ist mehr als auf dem Konto (${euro(frei)}). Trotzdem auszahlen?`)) return false;
       if (x.id) await aendern("auszahlungen", x.id, zeile);
       else await neu("auszahlungen", { ...zeile, art: "anteil" });
     },
@@ -2395,19 +2651,48 @@ function dialogAuszahlung(x = {}) {
   });
 }
 
+const VORLAUF = [[0, "Pünktlich"], [15, "15 min vorher"], [60, "1 Std vorher"], [1440, "1 Tag vorher"]];
+const vorlaufText = (m) => (VORLAUF.find(([w]) => w === Number(m)) || VORLAUF[0])[1];
+
 function dialogAufgabe(a = {}) {
   const kunden = [...daten.kunden].sort((x, y) => x.name.localeCompare(y.name, "de"));
   oeffneDialog({
     titel: a.id ? "Aufgabe bearbeiten" : "Neue Aufgabe",
     felder: `
-      <label class="feld"><span>Was ist zu tun?</span><input name="titel" required value="${esc(a.titel)}" placeholder="Zum Beispiel: Flyer im Märchenviertel verteilen" /></label>
+      <label class="feld"><span>Was ist zu tun?</span><input name="titel" required value="${esc(a.titel)}" placeholder="Zum Beispiel: Am Mittwoch bei Familie X melden" /></label>
       <div class="feldreihe">
         <label class="feld"><span>Wer</span><select name="zustaendig">${optionen(["Beide", ...PERSONEN], a.zustaendig || "Beide")}</select></label>
-        <label class="feld"><span>Bis wann</span><input name="faellig" type="date" value="${esc(a.faellig || "")}" /></label>
+        <label class="feld"><span>Wann</span><input name="faellig" type="date" value="${esc(a.faellig || "")}" /></label>
+        <label class="feld"><span>Uhrzeit</span><input name="uhrzeit" type="time" value="${esc((a.uhrzeit || "").slice(0, 5))}" /></label>
       </div>
+      <label class="schalter-zeile" data-push-zeile>
+        <input type="checkbox" name="push" ${a.push ? "checked" : ""} />
+        <span><b>🔔 Push-Erinnerung</b><small>Kommt aufs Handy von ${a.zustaendig && a.zustaendig !== "Beide" ? esc(a.zustaendig) : "euch beiden"}. Ohne Uhrzeit um 9 Uhr.</small></span>
+      </label>
+      <label class="feld" data-vorlauf><span>Erinnern</span><select name="vorlauf_min">${optionen(VORLAUF.map(([w, t]) => [String(w), t]), String(a.vorlauf_min ?? 0))}</select></label>
       <label class="feld"><span>Zu Kunde (optional)</span><select name="kunde_id"><option value="">–</option>${optionen(kunden.map((k) => [k.id, k.name]), a.kunde_id)}</select></label>`,
+    nachOeffnen: (form) => {
+      const zeigen = () => {
+        const v = form.querySelector("[data-vorlauf]");
+        if (v) v.hidden = !form.elements.push.checked;
+      };
+      form.addEventListener("change", zeigen);
+      zeigen();
+    },
     absenden: async (f) => {
-      const zeile = { titel: f.titel.trim(), zustaendig: f.zustaendig, faellig: f.faellig || null, kunde_id: f.kunde_id || null };
+      const push = Boolean(f.push);
+      if (push && !f.faellig) throw new Error("Für die Push-Erinnerung bitte einen Tag wählen.");
+      const zeile = {
+        titel: f.titel.trim(),
+        zustaendig: f.zustaendig,
+        faellig: f.faellig || null,
+        uhrzeit: f.uhrzeit || (push ? "09:00" : null),
+        push,
+        vorlauf_min: Number(f.vorlauf_min) || 0,
+        kunde_id: f.kunde_id || null,
+      };
+      // Zeit geändert → Erinnerung darf noch einmal kommen
+      if (!a.id || zeile.faellig !== a.faellig || zeile.uhrzeit !== (a.uhrzeit || "").slice(0, 5) || zeile.vorlauf_min !== (a.vorlauf_min ?? 0) || zeile.zustaendig !== a.zustaendig) zeile.push_gesendet = null;
       if (a.id) await aendern("aufgaben", a.id, zeile);
       else await neu("aufgaben", { ...zeile, erledigt: false });
     },
@@ -2519,10 +2804,10 @@ function tbKasse(a, erfolg) {
   const b = zahl(a.bekommen);
   const g = zahl(a.geschaetzt);
   const team = teamVon(a);
-  const teil = lohnAufteilung({ bekommen: b, team, prozent: prozentVon(a) });
+  const teil = kontoAufteilung({ ...a, bekommen: b, team });
   const diff = g !== null ? Math.round((b - g) * 100) / 100 : null;
   const diffText = diff === null ? "" : diff === 0 ? "genau wie geschätzt" : `${diff > 0 ? "+" : "−"}${euro(Math.abs(diff))} ${diff > 0 ? "über" : "unter"} Schätzung`;
-  const teile = [...teil.loehne.map((l) => ({ name: l.name, betrag: l.betrag, farbe: hfFarbe(l.name) })), { name: "Kasse", betrag: teil.kasse, farbe: "#f2b33d" }].filter((t) => t.betrag > 0);
+  const teile = [...teil.loehne.map((l) => ({ name: `${l.name} bar`, betrag: l.betrag, farbe: hfFarbe(l.name) })), ...PERSONEN.map((p) => ({ name: p, betrag: teil.konto[p], farbe: hfFarbe(p) }))].filter((t) => t.betrag > 0);
   const lohn = stundenlohnProPerson(b, team, zahl(a.dauer_echt_min));
   const tg = trinkgeld(a);
   return `<section class="tb-kasse tb-breit${erfolg ? " tb-kasse--neu" : ""}" aria-label="Bekommen">
@@ -2633,8 +2918,9 @@ function terminkarteInhalt(a, { erfolg = false } = {}) {
     ? ""
     : `<div class="tb-tile"><span class="tb-mini">${tbSvg(TB_ICON.team)}Wer</span><div class="tb-avas">${team.map((n) => `<span style="background:${hfFarbe(n)}">${esc(n.charAt(0))}</span>`).join("")}</div><p class="tb-unter">${esc(team.join(" & "))}</p></div>`;
 
-  const kanal = KANAELE[a.kanal]
-    ? `<div class="tb-tile"><span class="tb-mini">${tbSvg(ICONS[KANAELE[a.kanal].icon] || ICONS.web)}Kam über</span><p class="tb-wert">${esc(kanalName(a.kanal))}</p></div>`
+  const kamUeber = k ? kanalVonKunde(k) : a.kanal;
+  const kanal = KANAELE[kamUeber]
+    ? `<div class="tb-tile"><span class="tb-mini">${tbSvg(ICONS[KANAELE[kamUeber].icon] || ICONS.web)}Kam über</span><p class="tb-wert">${esc(kanalName(kamUeber))}</p></div>`
     : "";
   const schaetz = `<div class="tb-tile tb-schaetz${kanal ? "" : " tb-breit"}"><span class="tb-mini">${tbSvg(ICONS.geld)}Geschätzt</span><p class="tb-wert tb-wert--gross">${geschaetzt !== null ? `~${esc(euro(geschaetzt))}` : "–"}</p><p class="tb-unter">wird nach dem Termin eingetragen</p></div>`;
 
@@ -2688,6 +2974,18 @@ terminkarte.addEventListener("click", (e) => {
 // Pop-up „Erledigt & Geld eintragen“: Betrag, wer dabei war, wie lange
 let tbPop = null;
 
+// „Wieder melden in …“: Nie, 1–12 Wochen, dann 4–12 Monate
+const WM_SCHRITTE = [null, ...Array.from({ length: 12 }, (_, i) => ({ wochen: i + 1 })), ...Array.from({ length: 9 }, (_, i) => ({ monate: i + 4 }))];
+const wmText = (x) => (!x ? "Nie" : x.wochen ? `${x.wochen} ${x.wochen === 1 ? "Woche" : "Wochen"}` : `${x.monate} Monate`);
+const wmStandard = (a) => (a.leistung === "Nachbarschaftshilfe" ? 0 : 8);
+const LEISTUNG_WIEDER = { Fensterreinigung: "Fenster putzen", Felgenreinigung: "Felgen reinigen", Nachbarschaftshilfe: "Nachbarschaftshilfe" };
+function wmDatum(x, ab = new Date()) {
+  const d = new Date(ab);
+  if (x.wochen) d.setDate(d.getDate() + x.wochen * 7);
+  else d.setMonth(d.getMonth() + x.monate);
+  return isoAusDatum(d);
+}
+
 function oeffneEintragen() {
   const a = daten.auftraege.find((x) => x.id === terminkarteId);
   if (!a) return;
@@ -2722,6 +3020,13 @@ function oeffneEintragen() {
         <button type="button" data-tb-dauer="15" aria-label="15 Minuten mehr">+</button>
       </div>
       <div class="tb-vorschau" data-tb-vorschau></div>
+      ${b === null && !istTermin(a) && a.kunde_id ? `<p class="tb-feld">Wieder melden in</p>
+      <div class="tb-dauer tb-wieder">
+        <button type="button" data-tb-wm="-1" aria-label="Früher">−</button>
+        <output data-tb-wm-i="${wmStandard(a)}" aria-live="polite">${wmText(WM_SCHRITTE[wmStandard(a)])}</output>
+        <button type="button" data-tb-wm="1" aria-label="Später">+</button>
+      </div>
+      <p class="tb-hinweis">Legt eine Aufgabe mit Push um 9 Uhr an: „wieder ${esc(LEISTUNG_WIEDER[a.leistung] || a.leistung || "")} anbieten“.</p>` : ""}
       <p class="meldung minus" data-tk-fehler role="alert"></p>
       <button class="tb-knopf tb-knopf--gruen" type="submit">${tbSvg(TK_ICON.haken)}Speichern</button>
       <button class="tb-knopf tb-knopf--text" type="button" data-tb-zu>Abbrechen</button>
@@ -2744,7 +3049,7 @@ function tbVorschau() {
   const lohn = stundenlohnProPerson(betrag, team, min);
   $("[data-tb-vorschau]", form).innerHTML = lohn === null
     ? ""
-    : `<b>${euro(lohn)}</b> pro Stunde &amp; Person<small>${aufteilungText(lohnAufteilung({ bekommen: betrag, team, prozent: prozentVon(a) }), betrag)}</small>`;
+    : `<b>${euro(lohn)}</b> pro Stunde &amp; Person<small>${aufteilungText(kontoAufteilung({ ...a, bekommen: betrag, team }), betrag)}</small>`;
   $("[data-tk-fehler]", form).textContent = "";
 }
 
@@ -2764,6 +3069,13 @@ function tbPopEreignisse() {
       out.dataset.tbMin = m;
       out.textContent = tbDauer(m);
       tbVorschau();
+    }
+    const w = t.closest("[data-tb-wm]");
+    if (w) {
+      const out = $("[data-tb-wm-i]", tbPop);
+      const i = Math.max(0, Math.min(WM_SCHRITTE.length - 1, Number(out.dataset.tbWmI) + Number(w.dataset.tbWm)));
+      out.dataset.tbWmI = i;
+      out.textContent = wmText(WM_SCHRITTE[i]);
     }
   });
   tbPop.addEventListener("input", tbVorschau);
@@ -2793,6 +3105,20 @@ function tbPopEreignisse() {
       await lohnBuchen({ ...a, bekommen: betrag, team });
       // Verlauf und Stammkunden-Status nur beim ersten Eintrag, bei einer Korrektur nicht noch einmal
       if (!warSchonBezahlt) await nachBezahlung(a.kunde_id, { ...a, bekommen: betrag });
+      const wm = WM_SCHRITTE[Number($("[data-tb-wm-i]", form)?.dataset.tbWmI || 0)];
+      if (wm && !warSchonBezahlt) {
+        const k = kundeVon(a.kunde_id);
+        await neu("aufgaben", {
+          titel: `${k?.name || "Kunde"}: wieder ${LEISTUNG_WIEDER[a.leistung] || a.leistung} anbieten`,
+          zustaendig: "Beide",
+          faellig: wmDatum(wm, a.datum ? new Date(a.datum) : new Date()),
+          uhrzeit: "09:00",
+          push: true,
+          vorlauf_min: 0,
+          kunde_id: a.kunde_id,
+          erledigt: false,
+        });
+      }
       tbPop.close();
       terminkarteZeichnen({ erfolg: true });
       zeigeToast(`${euro(betrag)} eingetragen`);
@@ -3032,6 +3358,13 @@ document.addEventListener("click", async (event) => {
     case "filter":
       zustand.kundenFilter = wert;
       return render();
+    case "kunden-ansicht":
+      zustand.kundenAnsicht = wert;
+      if (wert === "kunden") zustand.auftraegeZeitraum = null;
+      return render();
+    case "auftraege-zeitraum-weg":
+      zustand.auftraegeZeitraum = null;
+      return render();
     case "aufgaben-filter":
       zustand.aufgabenFilter = wert;
       return render();
@@ -3104,6 +3437,22 @@ document.addEventListener("click", async (event) => {
       mailOeffnen(k, "bestaetigt", a, "Bestätigt");
       return render();
     }
+    case "datum-festlegen": {
+      const a = finden("auftraege");
+      oeffneDialog({
+        titel: "Datum festlegen",
+        felder: `<p class="leise" style="margin:0">${esc(auftragName(a))}${a.leistung ? ` · ${esc(a.leistung)}` : ""}</p>
+          <label class="feld"><span>Wann</span><input type="datetime-local" name="datum" required /></label>
+          ${vorlaeufigSchalter({ vorlaeufig: false })}`,
+        absenden: async (f) => {
+          const zeile = { datum: lokalZuIso(f.datum), vorlaeufig: Boolean(f.vorlaeufig) };
+          await aendern("auftraege", id, zeile);
+          if (a.kunde_id) await statusNachTermin(a.kunde_id, { ...a, ...zeile });
+          await kalenderAbgleichen(id);
+        },
+      });
+      return;
+    }
     case "termin-fix": {
       const a = finden("auftraege");
       if (!a.datum) return istTermin(a) ? dialogTermin(a) : dialogAuftrag(a);
@@ -3160,10 +3509,9 @@ document.addEventListener("click", async (event) => {
       });
       return;
     }
-    case "ausgleich": {
-      const t = aufteilung();
-      if (t.D >= 0.005) dialogAuszahlung({ an: t.hinten.name, betrag: t.D, notiz: "Ausgleich 50/50" });
-      return;
+    case "konto-auszahlen": {
+      const g = guthabenVon(wert);
+      return dialogAuszahlung({ an: wert, betrag: g > 0 ? cent(g) : "" });
     }
     case "verfueg-add": {
       const wochentag = Number(wert);
