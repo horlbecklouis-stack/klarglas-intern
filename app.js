@@ -214,8 +214,11 @@ async function laden(t) {
 
 async function speichern(aktion, t, ...rest) {
   try {
+    // Bei Aufträgen merken, welcher Kunde betroffen ist (vor dem Löschen/Ändern), damit sein Status nachzieht
+    const kundenIds = t === "auftraege" ? betroffeneKunden(aktion, rest) : [];
     const ergebnis = await db[aktion](t, ...rest);
     await laden(t);
+    for (const kid of kundenIds) await statusAbgleichen(kid);
     if (aktion === "remove" && t === "kunden") await Promise.all(["auftraege", "notizen", "aufgaben", "auszahlungen"].map(laden));
     if (aktion === "remove" && t === "auftraege") await laden("auszahlungen");
     return ergebnis;
@@ -223,6 +226,13 @@ async function speichern(aktion, t, ...rest) {
     zeigeToast(`Speichern hat nicht geklappt: ${fehler.message}`);
     throw fehler;
   }
+}
+
+function betroffeneKunden(aktion, rest) {
+  if (aktion === "insert") return [rest[0]?.kunde_id].filter(Boolean);
+  const alt = daten.auftraege.find((a) => a.id === rest[0])?.kunde_id;
+  const neuK = aktion === "update" ? rest[1]?.kunde_id : null;
+  return [...new Set([alt, neuK].filter(Boolean))];
 }
 
 const neu = (t, zeile) => speichern("insert", t, zeile);
@@ -1454,9 +1464,9 @@ function diagrammFuer(zeige, zeitraum, stichtag) {
   }
   if (zeige === "hochrechnung") {
     const h = hochrechnungMonat();
-    const zeilen = h.rest.sort((a, b) => new Date(a.datum) - new Date(b.datum)).map((a) => `<li><button class="zeile zeile--knopf" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}" data-diagramm-zu>
-      ${datumMarke(a.datum)}
-      <span class="zeile__haupt"><span class="zeile__titel">${esc(auftragName(a))}</span><span class="zeile__unter">${esc(fmtTag.format(new Date(a.datum)))} · ${esc(a.leistung || "")}${a.vorlaeufig ? " · noch nicht fest" : ""}</span></span>
+    const zeilen = h.rest.sort((a, b) => (a.datum ? new Date(a.datum) : Infinity) - (b.datum ? new Date(b.datum) : Infinity)).map((a) => `<li><button class="zeile zeile--knopf" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}" data-diagramm-zu>
+      ${a.datum ? datumMarke(a.datum) : `<span class="datum-marke"><b>?</b><small>offen</small></span>`}
+      <span class="zeile__haupt"><span class="zeile__titel">${esc(auftragName(a))}</span><span class="zeile__unter">${a.datum ? esc(fmtTag.format(new Date(a.datum))) : "Datum fehlt"} · ${esc(a.leistung || "")}${a.vorlaeufig || a.termin_status === "angefragt" ? " · noch nicht fest" : ""}</span></span>
       <span class="zeile__rechts leise">${zahl(a.geschaetzt) !== null ? `~${euro(a.geschaetzt)}` : `Ø ${euro(h.schnitt)}`}</span>
     </button></li>`).join("");
     return {
@@ -1578,7 +1588,15 @@ function hochrechnungMonat() {
   const bekommen = zahlenFuer(g.von, g.bis).umsatz;
   const bezahlt = daten.auftraege.filter((a) => zahl(a.bekommen) !== null);
   const schnitt = bezahlt.length ? bezahlt.reduce((s, a) => s + Number(a.bekommen), 0) / bezahlt.length : 0;
-  const rest = daten.auftraege.filter((a) => !istTermin(a) && !a.abgesagt && zahl(a.bekommen) === null && a.datum && new Date(a.datum) >= g.von && new Date(a.datum) < g.bis);
+  // Alle offenen Aufträge dieses Monats – auch vorläufige, angefragte und welche ohne Datum (Ø, wenn nichts geschätzt)
+  const rest = daten.auftraege.filter(
+    (a) =>
+      !istTermin(a) &&
+      !a.abgesagt &&
+      a.termin_status !== "abgelehnt" &&
+      zahl(a.bekommen) === null &&
+      (!a.datum || (new Date(a.datum) >= g.von && new Date(a.datum) < g.bis))
+  );
   const offen = rest.reduce((s, a) => s + (zahl(a.geschaetzt) !== null ? Number(a.geschaetzt) : schnitt), 0);
   const ohneSchaetzung = rest.filter((a) => zahl(a.geschaetzt) === null).length;
   return { bekommen, offen, gesamt: bekommen + offen, rest, schnitt, ohneSchaetzung, monat: fmtMonat.format(g.von).split(" ")[0] };
@@ -2433,19 +2451,54 @@ function vorlaeufigSchalter(a) {
 // Gleicher Zeitpunkt, egal wie das Datum geschrieben ist (DB: +00:00, Formular: Z)
 const gleicheZeit = (x, y) => (x ? new Date(x).getTime() : null) === (y ? new Date(y).getTime() : null);
 
-// Kunde rückt mit einem Termin weiter: vorläufig → „Termin geplant“, fest → „Termin steht“
-async function statusNachTermin(kundeId, zeile) {
+// Status kommt immer aus den Aufträgen:
+// – fester Termin offen (Datum, nicht vorläufig, nicht nur angefragt) → „Termin steht“
+// – Auftrag ohne Datum, vorläufig oder angefragt → „Termin geplant“ (frische Website-Anfrage bleibt „Neu“)
+// – sonst bezahlt → „Erledigt“, ab STAMM_AB bezahlten Besuchen „Stammkunde“ (bleibt dann Stammkunde)
+// – nichts mehr offen und nie bezahlt → „Kontakt“ bzw. „Abgesagt“, „Neu“/„Kontakt“ bleiben von Hand
+function statusSoll(k) {
+  const alle = auftraegeVon(k.id);
+  const jetzt = new Date();
+  const offen = alle.filter(
+    (a) =>
+      !a.abgesagt &&
+      a.termin_status !== "abgelehnt" &&
+      zahl(a.bekommen) === null &&
+      // Vergangene Besichtigung o. Ä. (ohne Geld) ist vorbei
+      !(istTermin(a) && a.datum && new Date(a.datum) < jetzt) &&
+      // Website-Anfrage ohne Wunschtermin ist noch kein Termin (kein Team = vom Formular angelegt)
+      !(!istTermin(a) && !a.datum && !Array.isArray(a.team))
+  );
+  const istFest = (a) => a.datum && !a.vorlaeufig && a.termin_status !== "angefragt";
+  const bezahlt = alle.filter((a) => !istTermin(a) && zahl(a.bekommen) !== null).length;
+  if (k.status === "stamm" || bezahlt >= STAMM_AB) return "stamm";
+  if (offen.some(istFest)) return "termin";
+  if (offen.length) return k.status === "neu" && offen.every((a) => a.termin_status === "angefragt") ? "neu" : "geplant";
+  if (bezahlt) return "erledigt";
+  if (["geplant", "termin", "erledigt"].includes(k.status))
+    return alle.some((a) => a.abgesagt || a.termin_status === "abgelehnt") ? "abgesagt" : "kontakt";
+  return k.status;
+}
+
+async function statusAbgleichen(kundeId, { abgesagtLassen = false } = {}) {
   const k = kundeVon(kundeId);
-  // Bezahlte oder vergangene Termine schieben niemanden mehr zurück
-  if (!k || zeile.abgesagt || zahl(zeile.bekommen) !== null || (zeile.datum && new Date(zeile.datum) < new Date())) return;
-  // Ohne Datum oder vorläufig = „Termin geplant“, festes Datum = „Termin steht“
-  const offen = zeile.vorlaeufig || !zeile.datum;
-  const ziel = offen ? "geplant" : "termin";
-  const darf = offen ? ["neu", "kontakt", "erledigt", "abgesagt"] : ["neu", "kontakt", "geplant", "erledigt", "abgesagt"];
-  if (k.status === ziel || !darf.includes(k.status)) return;
+  if (!k) return;
+  if (abgesagtLassen && k.status === "abgesagt") return;
+  const ziel = statusSoll(k);
+  if (!ziel || ziel === k.status) return;
   await aendern("kunden", k.id, { status: ziel });
-  const wann = zeile.datum ? ` am ${fmtTag.format(new Date(zeile.datum))}, ${fmtUhr.format(new Date(zeile.datum))} Uhr` : " (noch ohne Datum)";
-  await notiz(k.id, `${zeile.vorlaeufig ? "Vorläufiger Termin" : zeile.datum ? "Termin" : "Auftrag"}${wann} · Status → ${STATUS_NAME[ziel]}`);
+  const besuche = auftraegeVon(k.id).filter((a) => !istTermin(a) && zahl(a.bekommen) !== null).length;
+  await notiz(k.id, `Status → ${STATUS_NAME[ziel]}${ziel === "stamm" ? ` (${besuche}. Besuch)` : ""}`);
+}
+
+// Beim Start einmal alles geraderücken (von Hand auf „Abgesagt“ gesetzte Kunden bleiben)
+async function statusAlleAbgleichen() {
+  for (const k of [...daten.kunden]) await statusAbgleichen(k.id, { abgesagtLassen: true });
+}
+
+// Alte Aufrufe: Status einfach neu berechnen
+async function statusNachTermin(kundeId) {
+  await statusAbgleichen(kundeId);
 }
 
 // Google-Kalender „Klar Glas“ nachziehen: eintragen, verschieben oder austragen. Fehler stören das Speichern nicht.
@@ -2587,14 +2640,8 @@ async function nachBezahlung(kundeId, auftrag) {
   const tg = trinkgeld(auftrag);
   await notiz(kundeId, `${auftrag.leistung} erledigt · ${euro(auftrag.bekommen)} bekommen${tg ? ` (davon ${euro(tg)} Trinkgeld)` : ""}`);
   if (!k) return;
-  // Ab 3 bezahlten Besuchen wird man Stammkunde
-  const besuche = auftraegeVon(kundeId).filter((x) => zahl(x.bekommen) !== null).length;
-  if (besuche >= STAMM_AB && k.status !== "stamm") {
-    await aendern("kunden", kundeId, { status: "stamm" });
-    await notiz(kundeId, `Status → Stammkunde (${besuche}. Besuch)`);
-  } else if (k.status !== "stamm" && k.status !== "erledigt") {
-    await aendern("kunden", kundeId, { status: "erledigt" });
-  }
+  // Erledigt / ab STAMM_AB bezahlten Besuchen Stammkunde
+  await statusAbgleichen(kundeId);
 }
 
 function dialogAusgabe(x = {}) {
@@ -3662,6 +3709,9 @@ async function starten(neueDb, name) {
   inhalt.hidden = false;
   $("[data-nav]").hidden = false;
   await Promise.all(TABELLEN.map(laden));
+  try {
+    await statusAlleAbgleichen();
+  } catch {}
   db.abonnieren(async (t) => {
     await laden(t);
     renderSpaeter();
