@@ -1871,7 +1871,7 @@ function hfAuftrag(form) {
     $(".hf-preis__regel", preis).textContent = !team.length ? "Unten auswählen, wer mitarbeitet."
       : teil.zuViel ? "Achtung: zusammen über 100 %!"
       : teil.regel === "allein" ? `Einer allein: ${alleinVon(dialogAuftragAktuell)} % für ihn, der Rest für den anderen.`
-      : teil.regel === "mit" ? `Mitarbeiter ${prozent} % bar, der Chef dabei ${prozent} % aufs Konto, Rest geteilt.`
+      : teil.regel === "mit" ? `Mitarbeiter ${prozent} % bar, vom Rest ${alleinVon(dialogAuftragAktuell)} % für den Chef dabei, der Rest für den anderen.`
       : teil.loehne.length ? `Mitarbeiter ${prozent} % bar, der Rest wird geteilt.` : "Ihr beide seid dabei: wird geteilt.";
   };
   form.addEventListener("input", preisZeigen);

@@ -401,7 +401,7 @@ const cent = (x) => Math.round(x * 100) / 100;
 // Wie ein Betrag verteilt wird:
 // – Mitarbeiter (z. B. Flo) kriegen ihren Anteil bar (loehne)
 // – einer von euch allein: 85 % auf sein Konto, 15 % aufs Konto des anderen
-// – einer von euch mit Mitarbeiter: sein Anteil aufs eigene Konto, Rest geteilt
+// – einer von euch mit Mitarbeiter: erst der Mitarbeiter-Anteil, vom Rest 85/15 wie allein
 // – ihr beide: Rest geteilt (Standard 50/50)
 function lohnAufteilung({ bekommen, team, prozent, allein = alleinStandard(), louis = louisStandard() }) {
   const betrag = Number(bekommen) || 0;
@@ -413,25 +413,21 @@ function lohnAufteilung({ bekommen, team, prozent, allein = alleinStandard(), lo
   const loehne = mitarbeiter.map((name) => ({ name, betrag: pro }));
   let rest = betrag - loehne.reduce((s, l) => s + l.betrag, 0);
   let regel = "beide";
-  if (chefs.length === 1 && !mitarbeiter.length) {
-    regel = "allein";
+  if (chefs.length === 1) {
+    regel = mitarbeiter.length ? "mit" : "allein";
     const er = chefs[0];
     const anderer = PERSONEN.find((p) => p !== er);
-    konto[er] = cent((betrag * (Number(allein) || 0)) / 100);
-    konto[anderer] = cent(betrag - konto[er]);
+    rest = Math.max(0, cent(rest));
+    konto[er] = cent((rest * (Number(allein) || 0)) / 100);
+    konto[anderer] = cent(rest - konto[er]);
   } else {
-    if (chefs.length === 1) {
-      regel = "mit";
-      konto[chefs[0]] += pro;
-      rest -= pro;
-    }
     rest = Math.max(0, cent(rest));
     konto[PERSONEN[0]] += cent((rest * (Number(louis) || 0)) / 100);
     konto[PERSONEN[1]] += cent(rest - cent((rest * (Number(louis) || 0)) / 100));
   }
   PERSONEN.forEach((p) => (konto[p] = cent(konto[p])));
   const kasse = cent(betrag - loehne.reduce((s, l) => s + l.betrag, 0));
-  const zuViel = (mitarbeiter.length + (chefs.length === 1 && mitarbeiter.length ? 1 : 0)) * prozent > 100;
+  const zuViel = mitarbeiter.length * prozent > 100;
   return { loehne, konto, kasse, beideChefs, regel, zuViel };
 }
 const kontoAufteilung = (a) =>
@@ -1770,11 +1766,11 @@ function teamKarte() {
     <div class="feldreihe">
       <label class="feld team-anteil"><span>Einer von euch allein</span>
         <span class="eingabe-euro"><input type="number" class="eingabe" inputmode="decimal" min="0" max="100" step="1" value="${esc(alleinStandard())}" data-einstell="true" data-einstell-field="allein_prozent" /><span aria-hidden="true">%</span></span>
-        <small class="leise">So viel kriegt, wer allein war. Der andere ${100 - alleinStandard()} %.</small>
+        <small class="leise">So viel kriegt, wer allein war (mit Mitarbeiter: vom Rest nach dessen Anteil). Der andere ${100 - alleinStandard()} %.</small>
       </label>
       <label class="feld team-anteil"><span>Ihr beide: Louis-Anteil</span>
         <span class="eingabe-euro"><input type="number" class="eingabe" inputmode="decimal" min="0" max="100" step="1" value="${esc(louisStandard())}" data-einstell="true" data-einstell-field="beide_louis_prozent" /><span aria-hidden="true">%</span></span>
-        <small class="leise">Lukas bekommt ${100 - louisStandard()} %. Gilt auch für den Rest, wenn ein Mitarbeiter dabei ist.</small>
+        <small class="leise">Lukas bekommt ${100 - louisStandard()} %. Gilt auch für den Rest, wenn ihr beide mit Mitarbeiter da seid.</small>
       </label>
     </div>
     <p class="hinweis">Änderungen gelten nur für neue Aufträge – bezahlte behalten ihre Prozente.</p>
