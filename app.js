@@ -403,14 +403,14 @@ const cent = (x) => Math.round(x * 100) / 100;
 // – einer von euch allein: 85 % auf sein Konto, 15 % aufs Konto des anderen
 // – einer von euch mit Mitarbeiter: erst der Mitarbeiter-Anteil, vom Rest 85/15 wie allein
 // – ihr beide: Rest geteilt (Standard 50/50)
-function lohnAufteilung({ bekommen, team, prozent, allein = alleinStandard(), louis = louisStandard() }) {
+function lohnAufteilung({ bekommen, team, prozent, einzeln = {}, allein = alleinStandard(), louis = louisStandard() }) {
   const betrag = Number(bekommen) || 0;
   const chefs = PERSONEN.filter((p) => team.includes(p));
   const beideChefs = chefs.length === PERSONEN.length;
   const konto = Object.fromEntries(PERSONEN.map((p) => [p, 0]));
-  const pro = Math.round(betrag * (Number(prozent) || 0)) / 100;
   const mitarbeiter = team.filter((n) => !PERSONEN.includes(n));
-  const loehne = mitarbeiter.map((name) => ({ name, betrag: pro }));
+  const prozentFuer = (name) => zahl(einzeln?.[name]) ?? (Number(prozent) || 0);
+  const loehne = mitarbeiter.map((name) => ({ name, prozent: prozentFuer(name), betrag: Math.round(betrag * prozentFuer(name)) / 100 }));
   let rest = betrag - loehne.reduce((s, l) => s + l.betrag, 0);
   let regel = "beide";
   if (chefs.length === 1) {
@@ -427,11 +427,84 @@ function lohnAufteilung({ bekommen, team, prozent, allein = alleinStandard(), lo
   }
   PERSONEN.forEach((p) => (konto[p] = cent(konto[p])));
   const kasse = cent(betrag - loehne.reduce((s, l) => s + l.betrag, 0));
-  const zuViel = mitarbeiter.length * prozent > 100;
+  const zuViel = loehne.reduce((s, l) => s + l.prozent, 0) > 100;
   return { loehne, konto, kasse, beideChefs, regel, zuViel };
 }
 const kontoAufteilung = (a) =>
-  lohnAufteilung({ bekommen: a.bekommen, team: teamVon(a), prozent: prozentVon(a), allein: alleinVon(a), louis: louisVon(a) });
+  lohnAufteilung({ bekommen: a.bekommen, team: teamVon(a), prozent: prozentVon(a), einzeln: a.mitarbeiter_prozent || {}, allein: alleinVon(a), louis: louisVon(a) });
+
+// Aufklappbarer Block „Prozente“ im Auftrag: jeder Mitarbeiter einzeln + Teilung Louis/Lukas.
+// Vorausgefüllt mit dem, was für den Auftrag gilt (sonst Standard aus den Einstellungen).
+function prozenteFeld(a) {
+  const einzeln = a.mitarbeiter_prozent || {};
+  const namen = [...aktiveMitarbeiter().map((m) => m.name)];
+  teamVon(a).forEach((n) => !PERSONEN.includes(n) && !namen.includes(n) && namen.push(n));
+  const zahlInput = (attr, wert) => `<span class="eingabe-euro"><input type="number" class="eingabe" inputmode="decimal" min="0" max="100" step="1" ${attr} value="${esc(wert)}" /><span aria-hidden="true">%</span></span>`;
+  return `<details class="prozente" data-prozente data-allein="${esc(alleinVon(a))}" data-louis="${esc(louisVon(a))}">
+    <summary><span>Prozente</span><small data-prozente-kurz></small></summary>
+    <div class="prozente__inhalt">
+      ${namen.map((n) => `<label class="feld" data-mp="${esc(n)}"><span>${esc(n)} (bar)</span>${zahlInput(`data-mp-wert="${esc(n)}"`, zahl(einzeln[n]) ?? prozentVon(a))}</label>`).join("")}
+      <div class="feldreihe" data-chef-paar>
+        <label class="feld"><span data-chef-name="0"></span>${zahlInput('data-chef="0"', "")}</label>
+        <label class="feld"><span data-chef-name="1"></span>${zahlInput('data-chef="1"', "")}</label>
+      </div>
+      <small class="leise" data-chef-hinweis></small>
+    </div>
+  </details>`;
+}
+
+// Was gerade im Prozente-Block steht
+function prozenteAusForm(form, a) {
+  const box = $("[data-prozente]", form);
+  if (!box) return { prozent: prozentVon(a), einzeln: a.mitarbeiter_prozent || {}, allein: alleinVon(a), louis: louisVon(a) };
+  const einzeln = {};
+  box.querySelectorAll("[data-mp-wert]").forEach((x) => (einzeln[x.dataset.mpWert] = zahl(x.value) ?? prozentVon(a)));
+  return { prozent: prozentVon(a), einzeln, allein: Number(box.dataset.allein), louis: Number(box.dataset.louis) };
+}
+
+// Felder passend zum Team zeigen, die zwei Chef-Felder ergänzen sich immer zu 100
+function prozenteEinrichten(form, a) {
+  const box = $("[data-prozente]", form);
+  if (!box) return;
+  const chef = [...box.querySelectorAll("[data-chef]")];
+  const modus = () => {
+    const chefs = PERSONEN.filter((p) => teamAusForm(form).includes(p));
+    return chefs.length === 2 ? { art: "louis", namen: PERSONEN } : chefs.length === 1 ? { art: "allein", namen: [chefs[0], PERSONEN.find((p) => p !== chefs[0])] } : null;
+  };
+  const zeigen = () => {
+    const team = teamAusForm(form);
+    box.querySelectorAll("[data-mp]").forEach((x) => (x.hidden = !team.includes(x.dataset.mp)));
+    const m = modus();
+    $("[data-chef-paar]", box).hidden = !m;
+    if (m) {
+      const wert = Number(box.dataset[m.art]);
+      $('[data-chef-name="0"]', box).textContent = m.art === "allein" ? `${m.namen[0]} (vor Ort)` : m.namen[0];
+      $('[data-chef-name="1"]', box).textContent = m.namen[1];
+      if (document.activeElement !== chef[0]) chef[0].value = wert;
+      if (document.activeElement !== chef[1]) chef[1].value = cent(100 - wert);
+    }
+    const ma = team.filter((n) => !PERSONEN.includes(n));
+    $("[data-chef-hinweis]", box).textContent = !m ? "" : m.art === "louis"
+      ? (ma.length ? "Teilung vom Rest nach den Mitarbeitern." : "So wird zwischen euch geteilt.")
+      : (ma.length ? "Erst die Mitarbeiter, vom Rest diese Teilung." : "Einer allein: so wird geteilt.");
+    const p = prozenteAusForm(form, a);
+    $("[data-prozente-kurz]", box).textContent = [
+      ...ma.map((n) => `${n} ${p.einzeln[n]} %`),
+      ...(m ? [`${m.namen[0]} ${box.dataset[m.art]} / ${m.namen[1]} ${cent(100 - Number(box.dataset[m.art]))}`] : []),
+    ].join(" · ");
+  };
+  chef.forEach((x, i) => x.addEventListener("input", () => {
+    const m = modus();
+    const v = zahl(x.value);
+    if (!m || v === null) return;
+    const wert = Math.min(100, Math.max(0, i === 0 ? v : 100 - v));
+    box.dataset[m.art] = wert;
+    chef[1 - i].value = cent(100 - wert);
+  }));
+  form.addEventListener("input", zeigen);
+  form.addEventListener("change", zeigen);
+  zeigen();
+}
 
 // Kurztext wie „Flo 15 € bar · Lukas 30 € · Louis 15 €“
 function aufteilungText(teil, betrag) {
@@ -2362,9 +2435,9 @@ function dialogAuftrag(a = {}, kundeId = null) {
         ${teamChips(teamVon(a))}
       </fieldset>
       <div class="feldreihe">
-        <label class="feld"><span>Anteil pro Kopf (%)</span><input name="anteil_prozent" type="number" inputmode="decimal" min="0" max="100" step="1" value="${esc(a.anteil_prozent ?? "")}" placeholder="${esc(standardAnteil())} (Standard)" /></label>
         <label class="feld"><span>Wirklich gebraucht (Std.)</span><input name="dauer_echt" type="text" inputmode="decimal" value="${esc(stundenFeld(zahl(a.dauer_echt_min)))}" placeholder="nach dem Termin" /></label>
       </div>
+      ${prozenteFeld(a)}
       <p class="hinweis lohn-vorschau" data-lohn-vorschau></p>
       ${vorlaeufigSchalter(a)}
       <label class="feld"><span>Notizen zum Auftrag</span><textarea name="notiz" rows="3" placeholder="Zum Beispiel: Hund im Garten, Leiter mitbringen, Schlüssel beim Nachbarn">${esc(a.notiz)}</textarea></label>
@@ -2387,11 +2460,13 @@ function dialogAuftrag(a = {}, kundeId = null) {
           : s === null ? "" : `Rechnung: ${fensterArt ? `${werte.fenster_normal || 0} × ${euro(p.preis_normal)} + ${werte.fenster_boden || 0} × ${euro(p.preis_boden)}, mindestens ${euro(p.mindestpreis)}` : `${Number(werte.stunden).toLocaleString("de-DE")} h × ${euro(satz)}`} = ${euro(s)}`;
         if (!vonHand && s !== null) feld.value = s;
         const betrag = zahl(werte.bekommen) ?? zahl(feld.value);
-        const teil = lohnAufteilung({ bekommen: betrag, team: teamAusForm(form), prozent: zahl(werte.anteil_prozent) ?? standardAnteil(), allein: alleinVon(a), louis: louisVon(a) });
+        const teil = lohnAufteilung({ bekommen: betrag, team: teamAusForm(form), ...prozenteAusForm(form, a) });
         $("[data-lohn-vorschau]", form).innerHTML = `${zahl(werte.bekommen) === null ? "Bei " + euro(betrag || 0) + ": " : ""}${aufteilungText(teil, betrag)}`;
       };
       feld.addEventListener("input", () => (vonHand = true));
+      prozenteEinrichten(form, a);
       form.addEventListener("input", (e) => e.target !== feld && aktualisieren());
+      form.addEventListener("change", aktualisieren);
       aktualisieren();
     },
     absenden: async (f, form) => {
@@ -2415,7 +2490,7 @@ function dialogAuftrag(a = {}, kundeId = null) {
         vorlaeufig: Boolean(f.vorlaeufig) && Boolean(f.datum),
         notiz: (f.notiz || "").trim() || null,
         team,
-        anteil_prozent: zahl(f.anteil_prozent),
+        ...prozenteSpeichern(form, a, team),
         dauer_echt_min: minutenAus(f.dauer_echt),
       };
       let gespeichert;
@@ -2434,6 +2509,20 @@ function dialogAuftrag(a = {}, kundeId = null) {
     },
     entfernen: a.id ? () => auftragLoeschen(a) : null,
   });
+}
+
+// Nur speichern, was vom Standard abweicht oder schon fest im Auftrag steht –
+// sonst gelten weiter die Einstellungen (beim Bezahlen werden sie festgehalten)
+function prozenteSpeichern(form, a, team) {
+  const p = prozenteAusForm(form, a);
+  const einzeln = {};
+  team.filter((n) => !PERSONEN.includes(n)).forEach((n) => {
+    if (p.einzeln[n] !== prozentVon(a) || zahl(a.mitarbeiter_prozent?.[n]) !== null) einzeln[n] = p.einzeln[n];
+  });
+  const zeile = { mitarbeiter_prozent: Object.keys(einzeln).length ? einzeln : null };
+  if (zahl(a.allein_prozent) !== null || p.allein !== alleinStandard()) zeile.allein_prozent = p.allein;
+  if (zahl(a.louis_prozent) !== null || p.louis !== louisStandard()) zeile.louis_prozent = p.louis;
+  return zeile;
 }
 
 // Schalter „Noch nicht bestätigt“: ungefähr ausgemacht, steht aber noch nicht fest

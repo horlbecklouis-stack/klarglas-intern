@@ -1862,17 +1862,17 @@ function hfAuftrag(form) {
     const betrag = bekommen ?? zahl(geschaetzt.value) ?? 0;
     $("[data-hf-preis-titel]", preis).textContent = bekommen !== null ? "Bekommen" : preisLabel.textContent.replace(" (€)", "");
     const team = teamAusForm(form);
-    const prozent = zahl(werte.anteil_prozent) ?? standardAnteil();
-    const teil = lohnAufteilung({ bekommen: betrag, team, prozent, allein: alleinVon(dialogAuftragAktuell), louis: louisVon(dialogAuftragAktuell) });
+    const pz = prozenteAusForm(form, dialogAuftragAktuell);
+    const teil = lohnAufteilung({ bekommen: betrag, team, ...pz });
     $(".hf-teil", preis).innerHTML = [
-      ...teil.loehne.map((l) => `<span>${esc(l.name)} · ${prozent} % bar<b>${euro(l.betrag)}</b></span>`),
+      ...teil.loehne.map((l) => `<span>${esc(l.name)} · ${l.prozent} % bar<b>${euro(l.betrag)}</b></span>`),
       ...PERSONEN.filter((p) => team.length).map((p) => `<span class="hf-teil__kasse">${p}s Konto<b>${euro(teil.konto[p])}</b></span>`),
     ].join("");
     $(".hf-preis__regel", preis).textContent = !team.length ? "Unten auswählen, wer mitarbeitet."
       : teil.zuViel ? "Achtung: zusammen über 100 %!"
-      : teil.regel === "allein" ? `Einer allein: ${alleinVon(dialogAuftragAktuell)} % für ihn, der Rest für den anderen.`
-      : teil.regel === "mit" ? `Mitarbeiter ${prozent} % bar, vom Rest ${alleinVon(dialogAuftragAktuell)} % für den Chef dabei, der Rest für den anderen.`
-      : teil.loehne.length ? `Mitarbeiter ${prozent} % bar, der Rest wird geteilt.` : "Ihr beide seid dabei: wird geteilt.";
+      : teil.regel === "allein" ? `Einer allein: ${pz.allein} % für ihn, der Rest für den anderen.`
+      : teil.regel === "mit" ? `Erst die Mitarbeiter bar, vom Rest ${pz.allein} % für den Chef dabei.`
+      : teil.loehne.length ? `Erst die Mitarbeiter bar, der Rest ${pz.louis} / ${100 - pz.louis} geteilt.` : `Ihr beide seid dabei: ${pz.louis} / ${100 - pz.louis}.`;
   };
   form.addEventListener("input", preisZeigen);
   form.addEventListener("change", preisZeigen);
@@ -1902,9 +1902,7 @@ function hfAuftrag(form) {
   const datum = form.querySelector("[name=datum]");
   const vorl = hfSchalter(form.querySelector(".schalter-zeile"), "Noch nicht fest", "Steht als „Geplant“ mit ? im Kalender", "#e67c73");
 
-  const anteil = hfFeld(form, "anteil_prozent");
-  anteil.classList.add("hf-klein");
-  $("span", anteil).textContent = "Anteil pro Kopf (%)";
+  const anteil = form.querySelector("[data-prozente]");
   const wer = hfKarte("Wer ist dabei?", "leute", "#e67c73", [hfTeam(form), anteil]);
 
   const notiz = hfFeld(form, "notiz");

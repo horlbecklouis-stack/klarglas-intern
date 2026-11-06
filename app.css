@@ -3946,3 +3946,13 @@ a.kachel:active,
 .kanal-farben__punkt input { position: absolute; opacity: 0; pointer-events: none; }
 .kanal-farben__punkt:has(input:checked) { outline: 3px solid var(--c); outline-offset: 3px; }
 .kanal-farben__punkt:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+/* v21: aufklappbarer Block „Prozente“ im Auftrag */
+.prozente { border: 1px solid var(--border); border-radius: var(--r-field); background: var(--surface); }
+.prozente summary { list-style: none; display: flex; align-items: center; gap: .6rem; padding: .75rem .9rem; font-weight: 700; cursor: pointer; }
+.prozente summary::-webkit-details-marker { display: none; }
+.prozente summary::after { content: "›"; margin-left: .2rem; font-size: 1.2rem; line-height: 1; color: var(--ink-3); transition: transform var(--dur-ui) var(--ease-out); }
+.prozente[open] summary::after { transform: rotate(90deg); }
+.prozente summary small { margin-left: auto; font-weight: 600; color: var(--ink-3); font-size: .82rem; text-align: right; }
+.prozente__inhalt { display: grid; gap: .7rem; padding: 0 .9rem .9rem; }
+.prozente [hidden] { display: none !important; }
