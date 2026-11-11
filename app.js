@@ -2906,7 +2906,7 @@ function dialogAufgabe(a = {}) {
       </div>
       <label class="schalter-zeile" data-push-zeile>
         <input type="checkbox" name="push" ${a.push ? "checked" : ""} />
-        <span><b>🔔 Push-Erinnerung</b><small>Kommt aufs Handy von ${a.zustaendig && a.zustaendig !== "Beide" ? esc(a.zustaendig) : "euch beiden"}. Ohne Uhrzeit um 9 Uhr.</small></span>
+        <span><b>🔔 Push-Erinnerung</b><small>Kommt aufs Handy von ${a.zustaendig && a.zustaendig !== "Beide" ? esc(a.zustaendig) : "euch beiden"}. Ohne Uhrzeit um 16 Uhr.</small></span>
       </label>
       <label class="feld" data-vorlauf><span>Erinnern</span><select name="vorlauf_min">${optionen(VORLAUF.map(([w, t]) => [String(w), t]), String(a.vorlauf_min ?? 0))}</select></label>
       <label class="feld"><span>Zu Kunde (optional)</span><select name="kunde_id"><option value="">–</option>${optionen(kunden.map((k) => [k.id, k.name]), a.kunde_id)}</select></label>`,
@@ -3265,7 +3265,7 @@ function oeffneEintragen() {
         <output data-tb-wm-i="${wmStandard(a)}" aria-live="polite">${wmText(WM_SCHRITTE[wmStandard(a)])}</output>
         <button type="button" data-tb-wm="1" aria-label="Später">+</button>
       </div>
-      <p class="tb-hinweis">Legt eine Aufgabe mit Push um 9 Uhr an: „wieder ${esc(LEISTUNG_WIEDER[a.leistung] || a.leistung || "")} anbieten“.</p>` : ""}
+      <p class="tb-hinweis">Legt eine Aufgabe mit Push um 16 Uhr an: „wieder ${esc(LEISTUNG_WIEDER[a.leistung] || a.leistung || "")} anbieten“.</p>` : ""}
       <p class="meldung minus" data-tk-fehler role="alert"></p>
       <button class="tb-knopf tb-knopf--gruen" type="submit">${tbSvg(TK_ICON.haken)}Speichern</button>
       <button class="tb-knopf tb-knopf--text" type="button" data-tb-zu>Abbrechen</button>

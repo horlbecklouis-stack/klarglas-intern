@@ -2019,7 +2019,7 @@ function hfAufgabe(form) {
   const faellig = hfTag(form.querySelector("[name=faellig]"), { leiste: true, farbe: "#d08a00", schnell: [["Ohne", null], ["Heute", heute], ["Morgen", tagPlus(heute, 1)], ["Samstag", hfNaechster(6)], ["Nächste Woche", hfNaechster(1)]] });
   const uhr = hfFeld(form, "uhrzeit");
   uhr.classList.add("hf-klein");
-  const push = hfSchalter(form.querySelector("[data-push-zeile]"), "🔔 Push-Erinnerung", "Ohne Uhrzeit um 9 Uhr", "#6a4be0");
+  const push = hfSchalter(form.querySelector("[data-push-zeile]"), "🔔 Push-Erinnerung", "Ohne Uhrzeit um 16 Uhr", "#6a4be0");
   const vorlauf = hfKacheln(form.querySelector("[name=vorlauf_min]"), VORLAUF.map(([w, t]) => ({ wert: String(w), name: t, farbe: "#6a4be0" })), { spalten: 2, klein: true });
   const vorlaufZeigen = () => (vorlauf.hidden = !form.elements.push.checked);
   form.addEventListener("change", vorlaufZeigen);
