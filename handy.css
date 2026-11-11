@@ -4251,3 +4251,6 @@ body.handy .chart-monate button[aria-pressed="true"] { color: var(--c, var(--h-b
 .h-diagramm .diagramm__achse { font-family: var(--h-font); }
 body.handy .h-diagramm .diagramm__achse.ist-monat { fill: var(--c, var(--h-blau)); }
 body.handy .h-diagramm .diagramm__monat { fill: color-mix(in srgb, var(--c, #2b5cff) 9%, transparent); }
+
+/* v23: Kundenname bei Aufgaben vorne */
+.h-aufgabe__kunde { font-weight: 700; color: var(--h-blau); }

@@ -3996,3 +3996,7 @@ a.kachel:active,
 .diagramm__achse { fill: #8a90a0; font-family: Figtree, sans-serif; }
 .diagramm__achse.ist-monat { fill: #2b5cff; font-weight: 700; }
 .diagramm__achse--monat { fill: #5a6172; font-weight: 600; }
+
+/* v23: Funkstille + Kundenname bei Aufgaben vorne */
+.status--funkstille { background: #eef0f3; color: #6b7180; }
+.aufgabe .zeile__unter .aufgabe__kunde { font-weight: 700; color: var(--accent); text-decoration: none; }

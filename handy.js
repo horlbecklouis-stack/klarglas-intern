@@ -82,7 +82,7 @@ function hDatum(iso) {
   return `<span class="h-datum${heute ? " h-datum--heute" : ""}" aria-hidden="true"><small>${esc(fmtWochentag.format(d).slice(0, 2))}</small><b>${d.getDate()}</b></span>`;
 }
 
-const H_STATUS_KURZ = { neu: "Neu", kontakt: "Kontakt", geplant: "Geplant", termin: "Termin", erledigt: "Erledigt", stamm: "Stamm", abgesagt: "Abgesagt" };
+const H_STATUS_KURZ = { neu: "Neu", kontakt: "Kontakt", funkstille: "Funkstille", geplant: "Geplant", termin: "Termin", erledigt: "Erledigt", stamm: "Stamm", abgesagt: "Abgesagt" };
 const hStatusFarbe = (id) => STATUS.find((x) => x.id === id)?.farbe || "#8e8e93";
 const hAvatarFarbe = (k, klasse = "") => `<span class="h-ava h-ava--farbe ${klasse}" style="--c:${hStatusFarbe(k.status)}" aria-hidden="true">${esc(tkInitialen(k.name) || "?")}</span>`;
 const hAvatar = (name, klasse = "") => `<span class="h-ava ${klasse}" aria-hidden="true">${esc(tkInitialen(name) || "?")}</span>`;
@@ -161,7 +161,7 @@ function hUebersicht() {
   const kassieren = nochEintragen();
   const geplant = geplanteTermine();
   const termine = kommendeTermine().slice(0, 5);
-  const aufgaben = daten.aufgaben.filter((a) => !a.erledigt).sort(nachFaelligkeit).slice(0, 5);
+  const aufgaben = sichtbareAufgaben().filter((a) => !a.erledigt).sort(nachFaelligkeit).slice(0, 5);
 
   const anfragenHtml = anfragen.map((a) => {
     const k = kundeVon(a.kunde_id);
@@ -244,8 +244,8 @@ function hAufgabeZeile(a, { wischen = false } = {}) {
   const k = a.kunde_id ? kundeVon(a.kunde_id) : null;
   const ueberfaellig = a.faellig && !a.erledigt && a.faellig < heuteIso();
   const unter = [
+    k ? `<b class="h-aufgabe__kunde">${esc(k.name)}</b>` : "",
     a.faellig ? `<span class="${ueberfaellig ? "h-minus" : ""}">${esc(hTagText(new Date(`${a.faellig}T12:00`)))}${esc(aufgabeZeitText(a))}</span>` : "",
-    k ? esc(k.name) : "",
   ].filter(Boolean).join(" · ");
   const art = { Louis: "louis", Lukas: "lukas" }[a.zustaendig] || "beide";
   const vorne = `<div class="h-aufgabe${a.erledigt ? " ist-erledigt" : ""}">
@@ -262,9 +262,9 @@ function hAufgabeZeile(a, { wischen = false } = {}) {
 function hAufgaben() {
   const f = PERSONEN.includes(zustand.aufgabenFilter) ? zustand.aufgabenFilter : "offen";
   const fuer = (a) => f === "offen" || a.zustaendig === f || a.zustaendig === "Beide";
-  const offen = daten.aufgaben.filter((a) => !a.erledigt && fuer(a)).sort(nachFaelligkeit);
+  const offen = sichtbareAufgaben().filter((a) => !a.erledigt && fuer(a)).sort(nachFaelligkeit);
   const erledigt = daten.aufgaben.filter((a) => a.erledigt && fuer(a)).sort((a, b) => new Date(b.erstellt) - new Date(a.erstellt));
-  const alleOffen = daten.aufgaben.filter((a) => !a.erledigt);
+  const alleOffen = sichtbareAufgaben().filter((a) => !a.erledigt);
   const zaehl = (w) => alleOffen.filter((a) => w === "offen" || a.zustaendig === w || a.zustaendig === "Beide").length;
   const ueberfaellig = offen.filter((a) => a.faellig && a.faellig < heuteIso()).length;
   const filter = [["offen", "Alle", "∗", "#151a2e"], ["Louis", "Louis", "Lo", "#2B5CFF"], ["Lukas", "Lukas", "Lu", "#13A06B"]];

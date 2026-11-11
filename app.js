@@ -7,6 +7,7 @@ const TABELLEN = ["kunden", "auftraege", "notizen", "ausgaben", "auszahlungen", 
 const STATUS = [
   { id: "neu", name: "Neue Anfrage", farbe: "#2B5CFF" },
   { id: "kontakt", name: "In Kontakt", farbe: "#5B3FD6" },
+  { id: "funkstille", name: "Funkstille", farbe: "#8A90A0" },
   { id: "geplant", name: "Termin geplant", farbe: "#E67C73" },
   { id: "termin", name: "Termin steht", farbe: "#D08A00" },
   { id: "erledigt", name: "Erledigt", farbe: "#0F7A4B" },
@@ -72,6 +73,11 @@ const fmtTagMonat = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "l
 
 const isoAusDatum = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const heuteIso = () => isoAusDatum(new Date());
+
+// „Wieder melden“-Aufgaben erst 3 Tage vor dem fälligen Tag in den Listen zeigen (Push kommt trotzdem am Tag)
+const istWiederAufgabe = (a) => /: wieder .+ anbieten$/.test(a.titel || "");
+const aufgabeSichtbar = (a) => a.erledigt || !istWiederAufgabe(a) || !a.faellig || a.faellig <= isoAusDatum(new Date(Date.now() + 3 * 86400000));
+const sichtbareAufgaben = () => daten.aufgaben.filter(aufgabeSichtbar);
 
 // <input type="datetime-local"> ↔ ISO-Zeit
 function lokalZuIso(wert) {
@@ -837,8 +843,8 @@ function aufgabeZeile(a) {
   const k = a.kunde_id ? kundeVon(a.kunde_id) : null;
   const ueberfaellig = a.faellig && !a.erledigt && a.faellig < heuteIso();
   const unter = [
+    k ? `<a class="aufgabe__kunde" href="#kunde/${esc(k.id)}">${esc(k.name)}</a>` : "",
     a.faellig ? `${ueberfaellig ? '<span class="minus">überfällig · </span>' : ""}${esc(fmtTag.format(new Date(`${a.faellig}T12:00`)))}${esc(aufgabeZeitText(a))}` : "",
-    k ? `<a href="#kunde/${esc(k.id)}">${esc(k.name)}</a>` : "",
   ].filter(Boolean).join(" · ");
   return `<li class="aufgabe${a.erledigt ? " erledigt" : ""}">
     <button class="haken" type="button" role="checkbox" aria-checked="${a.erledigt}" aria-label="${esc(a.titel)} erledigt" data-aktion="aufgabe-haken" data-id="${esc(a.id)}">
@@ -1013,7 +1019,7 @@ function ansichtUebersicht() {
   const geplant = geplanteTermine();
   const handy = istHandy();
   const termine = kommendeTermine().slice(0, handy ? 5 : 4);
-  const aufgaben = daten.aufgaben.filter((a) => !a.erledigt).sort(nachFaelligkeit).slice(0, 5);
+  const aufgaben = sichtbareAufgaben().filter((a) => !a.erledigt).sort(nachFaelligkeit).slice(0, 5);
   const zaehlung = STATUS.map((s) => ({ ...s, anzahl: daten.kunden.filter((k) => k.status === s.id).length }));
   const gesamt = daten.kunden.length;
   const tgQuote = trinkgeldQuote(bezahltImZeitraum(monat.von, monat.bis));
@@ -1101,7 +1107,7 @@ function ansichtUebersicht() {
       <div class="karte__kopf">${kartenTitel("t-stand", "himmel", "kunden", "Kunden nach Stand")}<a class="knopf knopf--klein knopf--leise" href="#kunden">Alle ${gesamt}</a></div>
       ${gesamt ? `<div class="stand" aria-hidden="true">${zaehlung.filter((s) => s.anzahl).map((s) => `<span style="flex:${s.anzahl};background:${s.farbe}"></span>`).join("")}</div>` : ""}
       <div class="chips">${zaehlung.map((s) => {
-        const hell = { neu: "rgba(43, 92, 255, 0.08)", kontakt: "#f0ebff", geplant: "#fbe9e7", termin: "#fff4e0", erledigt: "#e6f5ee", stamm: "#e8eaf0", abgesagt: "#f4f5f7" }[s.id];
+        const hell = { neu: "rgba(43, 92, 255, 0.08)", kontakt: "#f0ebff", geplant: "#fbe9e7", termin: "#fff4e0", erledigt: "#e6f5ee", stamm: "#e8eaf0", funkstille: "#eef0f3", abgesagt: "#f4f5f7" }[s.id];
         return `<a class="chip chip--legende" href="#kunden?status=${s.id}" style="--chip-bg:${hell};--chip-farbe:${s.farbe}"><span class="chip__punkt"></span>${esc(s.name)}<span class="chip__zahl">${s.anzahl}</span></a>`;
       }).join("")}</div>
     </section>
@@ -1892,14 +1898,14 @@ function ansichtGeld() {
 
 function ansichtAufgaben() {
   const f = zustand.aufgabenFilter;
-  const liste = daten.aufgaben
+  const liste = sichtbareAufgaben()
     .filter((a) => (f === "erledigt" ? a.erledigt : !a.erledigt))
     .filter((a) => !PERSONEN.includes(f) || a.zustaendig === f || a.zustaendig === "Beide")
     .sort(f === "erledigt" ? (a, b) => new Date(b.erstellt) - new Date(a.erstellt) : nachFaelligkeit);
   const filter = [["offen", "Offen"], ["Louis", "Louis"], ["Lukas", "Lukas"], ["erledigt", "Erledigt"]];
   return `
     <div class="kopfzeile">
-      <div><h1>Aufgaben</h1><p class="leise">${daten.aufgaben.filter((a) => !a.erledigt).length} offen</p></div>
+      <div><h1>Aufgaben</h1><p class="leise">${sichtbareAufgaben().filter((a) => !a.erledigt).length} offen</p></div>
       <button class="knopf knopf--voll" type="button" data-aktion="aufgabe-neu">Neue Aufgabe</button>
     </div>
     <div class="chips" role="group" aria-label="Aufgaben filtern">
@@ -2919,7 +2925,7 @@ function dialogAufgabe(a = {}) {
         titel: f.titel.trim(),
         zustaendig: f.zustaendig,
         faellig: f.faellig || null,
-        uhrzeit: f.uhrzeit || (push ? "09:00" : null),
+        uhrzeit: f.uhrzeit || (push ? "16:00" : null),
         push,
         vorlauf_min: Number(f.vorlauf_min) || 0,
         kunde_id: f.kunde_id || null,
@@ -3345,7 +3351,7 @@ function tbPopEreignisse() {
           titel: `${k?.name || "Kunde"}: wieder ${LEISTUNG_WIEDER[a.leistung] || a.leistung} anbieten`,
           zustaendig: "Beide",
           faellig: wmDatum(wm, a.datum ? new Date(a.datum) : new Date()),
-          uhrzeit: "09:00",
+          uhrzeit: "16:00",
           push: true,
           vorlauf_min: 0,
           kunde_id: a.kunde_id,
@@ -3489,16 +3495,9 @@ function kundenMail(k, art, a) {
   };
 }
 
-// Öffnet das Mailprogramm; ohne Adresse ein Hinweis, wie man den Kunden sonst erreicht
+// v23: Es öffnet sich kein Mailprogramm mehr, nur die kurze Meldung (Name bleibt, damit die Aufrufe gleich bleiben)
 function mailOeffnen(k, art, a, erledigt) {
-  if (!k?.email) {
-    const weg = k?.nebenan_link || a.kanal === "nebenan" ? "schreib auf nebenan.de" : k?.telefon ? "ruf kurz an" : "meld dich beim Kunden";
-    zeigeToast(`${erledigt}. Keine E-Mail hinterlegt – ${weg}`, 5000);
-    return;
-  }
-  const { betreff, text } = kundenMail(k, art, a);
   zeigeToast(erledigt);
-  location.href = `mailto:${k.email}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(text)}`;
 }
 
 /* ===================== Push-Benachrichtigungen ===================== */
