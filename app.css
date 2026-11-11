@@ -3956,3 +3956,43 @@ a.kachel:active,
 .prozente summary small { margin-left: auto; font-weight: 600; color: var(--ink-3); font-size: .82rem; text-align: right; }
 .prozente__inhalt { display: grid; gap: .7rem; padding: 0 .9rem .9rem; }
 .prozente [hidden] { display: none !important; }
+
+/* v22: Wochen-Diagramme + Auswahl wie weit zurück */
+.diagramm-popup__zeile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+}
+.chart-monate {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #eef1f8;
+}
+.chart-monate button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  padding: 0.35rem 0.7rem;
+  min-height: 32px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.chart-monate button[aria-pressed="true"] {
+  background: #fff;
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(1, 15, 43, 0.12);
+}
+.diagramm__monat { fill: rgba(43, 92, 255, 0.07); }
+.diagramm__trenner { stroke: #e4e4e7; stroke-width: 1; stroke-dasharray: 3 4; }
+.diagramm__achse { fill: #8a90a0; font-family: Figtree, sans-serif; }
+.diagramm__achse.ist-monat { fill: #2b5cff; font-weight: 700; }
+.diagramm__achse--monat { fill: #5a6172; font-weight: 600; }

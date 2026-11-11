@@ -27,6 +27,18 @@ const STAMM_AB = 3; // bezahlte Besuche, ab denen jemand Stammkunde ist
 
 const daten = Object.fromEntries(TABELLEN.map((t) => [t, []]));
 const zustand = { kundenFilter: "alle", suche: "", kundenAnsicht: "kunden", auftraegeZeitraum: null, geldZeitraum: "monat", geldStichtag: new Date(), geldPillePrev: null, aufgabenFilter: "offen", kalenderPruefung: null };
+// Wie viele Monate das Wochen-Diagramm (Ansicht Monat) zeigt: 2, 3, 6, 12 oder "alles"; wird gemerkt
+const CHART_MONATE = [2, 3, 6, 12, "alles"];
+zustand.chartMonate = (() => {
+  try {
+    const v = localStorage.getItem("klarglas-chart-monate");
+    return v === "alles" ? "alles" : [2, 3, 6, 12].includes(Number(v)) ? Number(v) : 2;
+  } catch { return 2; }
+})();
+function chartMonateSetzen(wert) {
+  zustand.chartMonate = wert === "alles" ? "alles" : Number(wert) || 2;
+  try { localStorage.setItem("klarglas-chart-monate", String(zustand.chartMonate)); } catch {}
+}
 let ich = "Test";
 let db = null;
 
@@ -859,13 +871,16 @@ function outpostKnopf(a) {
 
 // Einfaches Balkendiagramm als SVG: Gruppen nebeneinander, Werte in Euro
 function balken(gruppen, reihen, format = euro) {
-  const B = 640, H = 220, unten = 28, oben = 16;
+  const wochen = gruppen[0]?.kw != null;
+  const B = 640, H = 220, unten = wochen && gruppen.length <= 14 ? 38 : 28, oben = 16;
   const max = Math.max(1, ...gruppen.flatMap((g) => reihen.map((r) => Math.abs(g.werte[r.id] || 0))));
   const breiteGruppe = B / Math.max(gruppen.length, 1);
   const breiteBalken = Math.min(26, (breiteGruppe * 0.7) / reihen.length);
   const hoehe = (w) => ((H - unten - oben) * Math.max(0, w)) / max;
   let svg = `<svg class="diagramm" viewBox="0 0 ${B} ${H}" role="img" aria-label="${esc(gruppen.map((g) => `${g.label}: ${reihen.map((r) => `${r.name} ${format(g.werte[r.id] || 0)}`).join(", ")}`).join("; "))}">`;
   svg += `<line x1="0" x2="${B}" y1="${H - unten}" y2="${H - unten}" stroke="#E4E4E7" />`;
+  const achse = wochen ? wochenAchse(gruppen, (i) => i * breiteGruppe + breiteGruppe / 2, breiteGruppe, { B, H, unten, oben }) : null;
+  if (achse) svg += achse.hinten;
   gruppen.forEach((g, i) => {
     const text = `${g.titel || g.label}: ${reihen.map((r) => `${r.name} ${format(g.werte[r.id] || 0)}`).join(", ")}`;
     const spitze = Math.max(0, ...reihen.map((r) => hoehe(g.werte[r.id] || 0)));
@@ -877,8 +892,9 @@ function balken(gruppen, reihen, format = euro) {
       const x = start + j * (breiteBalken + 4);
       svg += `<rect x="${x.toFixed(1)}" y="${(H - unten - h).toFixed(1)}" width="${breiteBalken.toFixed(1)}" height="${Math.max(h, w ? 2 : 0).toFixed(1)}" rx="5" fill="${r.farbe}" />`;
     });
-    svg += `<text x="${(i * breiteGruppe + breiteGruppe / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="13" fill="#5A6172" font-family="Figtree, sans-serif">${esc(g.label)}</text>`;
+    if (!wochen) svg += `<text x="${(i * breiteGruppe + breiteGruppe / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="13" fill="#5A6172" font-family="Figtree, sans-serif">${esc(g.label)}</text>`;
   });
+  if (achse) svg += achse.vorne;
   return `${svg}</svg><p class="legende">${reihen.map((r) => `<span style="--farbe:${r.farbe}">${esc(r.name)}</span>`).join("")}</p>`;
 }
 
@@ -895,7 +911,8 @@ function linie(punkte, opts = {}) {
   const { format = euro, mitProzent = false, treppe = false } = opts;
   if (!punkte || !punkte.length) return `<p class="leer">Noch keine Daten.</p>`;
 
-  const B = 640, H = 220, unten = 28, oben = 16, seite = 40;
+  const wochen = punkte[0].kw != null;
+  const B = 640, H = 220, unten = wochen && punkte.length <= 14 ? 38 : 28, oben = 16, seite = 40;
   const breite = B - 2 * seite;
   const hoehe_max = H - unten - oben;
   const min = Math.min(0, ...punkte.map((p) => p.wert));
@@ -913,6 +930,8 @@ function linie(punkte, opts = {}) {
       </linearGradient>
     </defs>
     <line x1="${seite}" x2="${B - seite}" y1="${H - unten}" y2="${H - unten}" stroke="#E4E4E7" />`;
+  const achse = wochen ? wochenAchse(punkte, xPos, breite / Math.max(punkte.length - 1, 1), { B, H, unten, oben }) : null;
+  if (achse) svg += achse.hinten;
 
   // Pfad für Bereich unter der Linie
   let pfad = `M ${xPos(0)} ${H - unten}`;
@@ -937,13 +956,14 @@ function linie(punkte, opts = {}) {
     const text = `${p.titel || p.label}: ${format(p.wert)}${p.quote != null ? ` · Ø ${p.quote} %` : ""}`;
     svg += `<g class="diagramm__punkt" ${tippAttr(p, text)} data-x="${(x / B).toFixed(4)}" data-y="${(y / H).toFixed(4)}"><circle cx="${x}" cy="${y}" r="16" fill="transparent" /><circle class="diagramm__kreis" cx="${x}" cy="${y}" r="3.5" fill="#2B5CFF" />
       <title>${esc(text)}</title></g>`;
-    if (i % Math.ceil(punkte.length / 12) && i !== punkte.length - 1) return;
+    if (wochen || (i % Math.ceil(punkte.length / 12) && i !== punkte.length - 1)) return;
     svg += `<text x="${x}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#5A6172" font-family="Figtree, sans-serif">${esc(p.label)}</text>`;
   });
 
   // Wert über dem letzten Punkt
   const letzter = punkte[punkte.length - 1];
   const labelLetzt = mitProzent && letzter.quote != null ? `${format(letzter.wert)} · Ø ${letzter.quote} %` : format(letzter.wert);
+  if (achse) svg += achse.vorne;
   svg += `<text x="${xPos(punkte.length - 1) + 4}" y="${Math.max(yPos(letzter.wert) - 12, 12)}" text-anchor="end" font-size="12" font-weight="700" fill="#010F2B" font-family="Figtree, sans-serif">${esc(labelLetzt)}</text>`;
 
   return svg + `</svg>`;
@@ -1474,8 +1494,11 @@ function ansichtKalender() {
     </section>`;
 }
 
-// Zeitreihe für das Popup: 7 Tage der Woche, 12 Monate bis zum Stichtag oder die 12 Monate des Jahres
-function zeitreihe(zeitraum, stichtag) {
+// Zeitreihe für die Diagramme: 7 Tage der Woche, die 12 Monate des Jahres oder (Monat)
+// ein Punkt pro Kalenderwoche über die letzten `monate` Monate bis zum Ende des gewählten Monats.
+// Ohne `monate` (Personen-Seiten) wie früher: die letzten 12 Monate.
+// Eine Woche gehört zu dem Monat, in dem ihr Montag liegt.
+function zeitreihe(zeitraum, stichtag, monate) {
   const monatPunkt = (d) => ({
     von: d,
     bis: new Date(d.getFullYear(), d.getMonth() + 1, 1),
@@ -1497,7 +1520,77 @@ function zeitreihe(zeitraum, stichtag) {
     return { untertitel: `Monate ${j}`, punkte: Array.from({ length: 12 }, (_, i) => monatPunkt(new Date(j, i, 1))) };
   }
   const m = stichtag.getMonth();
-  return { untertitel: "letzte 12 Monate", punkte: Array.from({ length: 12 }, (_, i) => monatPunkt(new Date(j, m - 11 + i, 1))) };
+  if (!monate) return { untertitel: "letzte 12 Monate", punkte: Array.from({ length: 12 }, (_, i) => monatPunkt(new Date(j, m - 11 + i, 1))) };
+
+  const ende = new Date(j, m + 1, 1);
+  let start = monate === "alles" ? datenStart() : new Date(j, m - monate + 1, 1);
+  if (start >= ende) start = new Date(j, m, 1);
+  let montag = montagVon(start);
+  if (montag < new Date(start.getFullYear(), start.getMonth(), 1)) montag = tagPlus(montag, 7);
+  const punkte = [];
+  for (; montag < ende; montag = tagPlus(montag, 7)) {
+    const sonntag = tagPlus(montag, 6);
+    const kw = kalenderWoche(montag);
+    const vorher = punkte[punkte.length - 1];
+    punkte.push({
+      von: montag,
+      bis: tagPlus(montag, 7),
+      label: `KW ${kw}`,
+      kw,
+      monat: MONATE_KURZ[montag.getMonth()],
+      neuerMonat: !vorher || vorher.von.getMonth() !== montag.getMonth(),
+      imMonat: montag.getMonth() === m && montag.getFullYear() === j,
+      titel: `KW ${kw} · ${fmtDatumKurz(montag)}–${fmtDatumKurz(sonntag)}`,
+    });
+  }
+  return { untertitel: monate === "alles" ? "Wochen seit Start" : `Wochen · letzte ${monate} Monate`, punkte, wochen: true };
+}
+
+// Erster Tag mit Daten (frühester Auftrag oder Ausgabe), spätestens Oktober 2026
+function datenStart() {
+  const daten_ = [
+    ...daten.auftraege.filter((a) => zahl(a.bekommen) !== null).map((a) => auftragDatum(a)),
+    ...daten.ausgaben.map((x) => new Date(x.datum)),
+  ].filter((d) => d instanceof Date && !isNaN(d));
+  const frueh = daten_.length ? new Date(Math.min(...daten_)) : new Date(2026, 9, 1);
+  const okt = new Date(2026, 9, 1);
+  return new Date(Math.min(frueh, okt));
+}
+
+// Auswahl 2 M · 3 M · 6 M · 12 M · Alles (nur in der Ansicht Monat)
+function chartMonateWahl(attr = "data-chart-monate") {
+  return `<div class="chart-monate" role="group" aria-label="Wie weit zurück">${CHART_MONATE.map((w) => `<button type="button" ${attr}="${w}" aria-pressed="${zustand.chartMonate === w}">${w === "alles" ? "Alles" : `${w} M`}</button>`).join("")}</div>`;
+}
+
+// Achse für Wochen-Diagramme: Hervorhebung des gewählten Monats, Trennlinien, KW- und Monatsnamen
+function wochenAchse(punkte, xPos, schritt, { B, H, unten, oben, klein = false }) {
+  const n = punkte.length;
+  const viele = n > 14;
+  const fs = klein ? 9.5 : 11;
+  let hinten = "", vorne = "";
+  const im = punkte.map((p, i) => (p.imMonat ? i : -1)).filter((i) => i >= 0);
+  if (im.length && im.length < n) {
+    const x1 = Math.max(0, xPos(im[0]) - schritt / 2);
+    const x2 = Math.min(B, xPos(im[im.length - 1]) + schritt / 2);
+    hinten += `<rect class="diagramm__monat" x="${x1.toFixed(1)}" y="${oben - 6}" width="${(x2 - x1).toFixed(1)}" height="${(H - unten - oben + 6).toFixed(1)}" rx="8" />`;
+  }
+  punkte.forEach((p, i) => {
+    const x = xPos(i);
+    if (p.neuerMonat && i > 0 && n > 14 && n <= 30) {
+      const xl = x - schritt / 2;
+      hinten += `<line class="diagramm__trenner" x1="${xl.toFixed(1)}" x2="${xl.toFixed(1)}" y1="${oben - 6}" y2="${H - unten}" />`;
+    }
+    const aktiv = p.imMonat ? " ist-monat" : "";
+    if (!viele) {
+      vorne += `<text class="diagramm__achse${aktiv}" x="${x.toFixed(1)}" y="${H - unten + 14}" text-anchor="middle" font-size="${fs}">${klein ? p.kw : esc(p.label)}</text>`;
+      if (p.neuerMonat) vorne += `<text class="diagramm__achse diagramm__achse--monat${aktiv}" x="${x.toFixed(1)}" y="${H - unten + 27}" text-anchor="middle" font-size="${fs}">${esc(p.monat)}</text>`;
+    } else if (p.neuerMonat) {
+      const anker = i === 0 ? "start" : "middle";
+      const xt = i === 0 ? Math.max(0, x - schritt / 2) : x;
+      vorne += `<text class="diagramm__achse diagramm__achse--monat${aktiv}" x="${xt.toFixed(1)}" y="${H - unten + 16}" text-anchor="${anker}" font-size="${fs}">${esc(p.monat)}</text>`;
+    }
+  });
+  return { hinten, vorne };
 }
 
 // Diagramm und große Zahl für die Kennzahl im Popup: { titel, wert, diagramm }
@@ -1514,16 +1607,16 @@ function diagrammFuer(zeige, zeitraum, stichtag) {
     return { titel: "Kassenstand seit Start", wert: euro(kassenstand()), diagramm: linie(punkte, { format: euro, treppe: true }) };
   }
 
-  const { untertitel, punkte } = zeitreihe(zeitraum, stichtag);
+  const { untertitel, punkte } = zeitreihe(zeitraum, stichtag, zustand.chartMonate);
   const betitel = (name) => `${name} · ${untertitel}`;
-  const reihe = (wertVon) => punkte.map((p) => ({ label: p.label, titel: p.titel, von: p.von, bis: p.bis, ...wertVon(p.von, p.bis) }));
+  const reihe = (wertVon) => punkte.map((p) => ({ ...p, ...wertVon(p.von, p.bis) }));
   const feld = (name) => reihe((von, bis) => ({ wert: zahlenFuer(von, bis)[name] }));
 
   if (zeige === "neukunden") {
     const nk = neukundenIm(g.von, g.bis);
     const gruppen = punkte.map((pk) => {
       const x = neukundenIm(pk.von, pk.bis);
-      return { label: pk.label, titel: pk.titel, von: pk.von, bis: pk.bis, werte: { neu: x.neu, mit: x.mit } };
+      return { ...pk, werte: { neu: x.neu, mit: x.mit } };
     });
     return {
       titel: betitel("Neukunden"),
@@ -1577,7 +1670,7 @@ function diagrammFuer(zeige, zeitraum, stichtag) {
     // Löhne: Balken pro Person und Zeitabschnitt, darunter die Namen zum Anklicken
     const namen = [...new Set(daten.auszahlungen.filter((x) => x.art === "lohn").map((x) => x.an))].sort((a, b) => a.localeCompare(b, "de"));
     const FARBEN = ["#5B3FD6", "#2B5CFF", "#D08A00", "#1E9E5A", "#E67C73", "#0F7A4B"];
-    const gruppen = punkte.map((pk) => ({ label: pk.label, titel: pk.titel, von: pk.von, bis: pk.bis, werte: kennzahlenFuer(pk.von, pk.bis).proPerson }));
+    const gruppen = punkte.map((pk) => ({ ...pk, werte: kennzahlenFuer(pk.von, pk.bis).proPerson }));
     const liste = namen.length
       ? `<ul class="liste lohn-liste">${namen.map((n) => `<li><a class="zeile" href="#mitarbeiter/${encodeURIComponent(n)}" data-diagramm-zu><span class="zeile__haupt"><span class="zeile__titel">${esc(n)}</span></span><span class="zeile__rechts">${euro(k.proPerson[n] || 0)}</span></a></li>`).join("")}</ul>`
       : `<p class="leer">Noch keine Löhne.</p>`;
@@ -2295,12 +2388,15 @@ dialog.addEventListener("close", () => wartetAufRender && render());
 
 const diagrammDialog = $("[data-diagramm]");
 
+let diagrammZeige = null;
 function oeffneDiagramm(zeige) {
+  diagrammZeige = zeige;
   const { titel, wert, diagramm } = diagrammFuer(zeige, aktuellerZeitraum(), zustand.geldStichtag);
+  const mitWahl = aktuellerZeitraum() === "monat" && !["kasse", "hochrechnung"].includes(zeige);
   $("[data-diagramm-inhalt]", diagrammDialog).innerHTML = `
     <button class="diagramm-popup__zu" type="button" data-diagramm-zu aria-label="Schließen">×</button>
     <h2 class="diagramm-popup__titel" id="diagramm-titel">${esc(titel)}</h2>
-    <p class="diagramm-popup__wert">${esc(wert)}</p>
+    <div class="diagramm-popup__zeile"><p class="diagramm-popup__wert">${esc(wert)}</p>${mitWahl ? chartMonateWahl() : ""}</div>
     <div class="diagramm-popup__bild">${diagramm}</div>`;
   if (!diagrammDialog.open) diagrammDialog.showModal();
 }
@@ -2308,6 +2404,11 @@ function oeffneDiagramm(zeige) {
 // Klick auf den Hintergrund (das Dialog-Element selbst) oder auf den Schließen-Knopf schließt
 diagrammDialog.addEventListener("click", (e) => {
   if (e.target === diagrammDialog || e.target.closest("[data-diagramm-zu]")) return diagrammDialog.close();
+  const wahl = e.target.closest("[data-chart-monate]");
+  if (wahl) {
+    chartMonateSetzen(wahl.dataset.chartMonate);
+    return oeffneDiagramm(diagrammZeige);
+  }
   const punkt = e.target.closest(".diagramm__punkt[data-tipp]");
   if (punkt) diagrammTippen(punkt);
   else diagrammDialog.querySelectorAll(".diagramm-tipp").forEach((t) => t.remove());

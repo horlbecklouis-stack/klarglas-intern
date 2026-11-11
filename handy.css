@@ -4236,3 +4236,18 @@ body.handy .prozente { margin-top: 10px; border: 0; border-radius: 16px; backgro
 body.handy .prozente summary { padding: 12px 14px; font-size: 14px; font-weight: 800; }
 body.handy .prozente summary small { font-size: 12px; color: #5b6478; }
 body.handy .prozente__inhalt { padding: 0 14px 14px; gap: 10px; }
+
+/* v22: Wochen-Diagramme + Auswahl wie weit zurück */
+.h-chart__zeile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+body.handy .chart-monate { background: rgba(120, 130, 160, 0.12); }
+body.handy .chart-monate button { font-size: 12px; padding: 4px 8px; min-height: 30px; }
+body.handy .chart-monate button[aria-pressed="true"] { color: var(--c, var(--h-blau)); }
+.h-diagramm .diagramm__achse { font-family: var(--h-font); }
+body.handy .h-diagramm .diagramm__achse.ist-monat { fill: var(--c, var(--h-blau)); }
+body.handy .h-diagramm .diagramm__monat { fill: color-mix(in srgb, var(--c, #2b5cff) 9%, transparent); }

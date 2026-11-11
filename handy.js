@@ -538,7 +538,8 @@ function hChartWert(art, von, bis) {
 
 // Balkendiagramm zum Antippen
 function hBalken(punkte, aktiv) {
-  const B = 340, HOEHE = 170, unten = 22, oben = 10;
+  const wochen = punkte[0]?.kw != null;
+  const B = 340, HOEHE = wochen && punkte.length <= 14 ? 180 : 170, unten = wochen && punkte.length <= 14 ? 32 : 22, oben = 10;
   const werte = punkte.map((p) => p.wert);
   const max = Math.max(0, ...werte);
   const min = Math.min(0, ...werte);
@@ -548,6 +549,8 @@ function hBalken(punkte, aktiv) {
   const schritt = B / punkte.length;
   const breite = Math.min(22, schritt * 0.62);
   let svg = `<svg class="h-diagramm" viewBox="0 0 ${B} ${HOEHE}" role="img" aria-label="${esc(punkte.map((p) => `${p.titel}: ${euro(p.wert)}`).join("; "))}">`;
+  const achse = wochen ? wochenAchse(punkte, (i) => i * schritt + schritt / 2, schritt, { B, H: HOEHE, unten, oben, klein: true }) : null;
+  if (achse) svg += achse.hinten;
   svg += `<line x1="0" x2="${B}" y1="${null_y.toFixed(1)}" y2="${null_y.toFixed(1)}" class="h-diagramm__null" />`;
   punkte.forEach((p, i) => {
     const x = i * schritt + (schritt - breite) / 2;
@@ -558,9 +561,10 @@ function hBalken(punkte, aktiv) {
       <rect class="h-diagramm__treffer" x="${(i * schritt).toFixed(1)}" y="0" width="${schritt.toFixed(1)}" height="${HOEHE}" />
       <rect x="${x.toFixed(1)}" y="${oberkante.toFixed(1)}" width="${breite.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(5, breite / 2).toFixed(1)}" />
     </g>`;
-    const zeigen = punkte.length <= 7 || i % 2 === 0 || i === punkte.length - 1;
+    const zeigen = !wochen && (punkte.length <= 7 || i % 2 === 0 || i === punkte.length - 1);
     if (zeigen) svg += `<text x="${(i * schritt + schritt / 2).toFixed(1)}" y="${HOEHE - 5}" text-anchor="middle" class="h-diagramm__text${i === aktiv ? " ist-aktiv" : ""}">${esc(p.label)}</text>`;
   });
+  if (achse) svg += achse.vorne;
   return `${svg}</svg>`;
 }
 
@@ -596,7 +600,7 @@ function hGeld(id) {
   const m = zahlenFuer(g.von, g.bis);
   const v = zahlenFuer(g.vorVon, g.vorBis);
   const art = H.geldChart;
-  const { untertitel, punkte } = zeitreihe(zr, z.geldStichtag);
+  const { untertitel, punkte } = zeitreihe(zr, z.geldStichtag, z.chartMonate);
   const reihe = punkte.map((p) => ({ ...p, wert: Math.round(hChartWert(art, p.von, p.bis) * 100) / 100 }));
   const aktiv = H.balken !== null && H.balken < reihe.length ? H.balken : null;
   const kasse = kassenstand();
@@ -641,7 +645,7 @@ function hGeld(id) {
     ${zeitraumWahl(g)}
 
     <section class="h-chart" aria-label="Diagramm" style="--c:${H_CHART_FARBE[art]}">
-      <p class="h-chart__wert">${gross}</p>
+      <div class="h-chart__zeile"><p class="h-chart__wert">${gross}</p>${zr === "monat" ? chartMonateWahl('data-h="chart-monate" data-wert') : ""}</div>
       <p class="h-chart__klein">${klein}</p>
       ${hBalken(reihe, aktiv)}
       <p class="h-chart__hinweis">${esc(untertitel)}${aktiv !== null ? ` · <button class="h-link" type="button" data-h="balken-weg">Zurück zur Summe</button>` : " · Balken antippen"}</p>
@@ -1449,6 +1453,11 @@ function hKlick(e) {
     }
     case "balken-weg":
       H.balken = null;
+      return render();
+    case "chart-monate":
+      chartMonateSetzen(wert);
+      H.balken = null;
+      hVibe(5);
       return render();
     case "kal-tag":
       H.kalTag = new Date(`${wert}T12:00`);
