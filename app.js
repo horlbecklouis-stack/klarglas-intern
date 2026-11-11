@@ -156,7 +156,7 @@ function lokaleDb() {
   }
   if (!speicher.einstellungen || speicher.einstellungen.length === 0) {
     speicher.einstellungen = [
-      { id: 1, slot_minuten: 60, slot_schritt: 30, vorlauf_stunden: 12, tage_voraus: 14, anteil_prozent: 25, allein_prozent: 85, beide_louis_prozent: 50, ...PREIS_STANDARD },
+      { id: 1, slot_minuten: 60, puffer_min: 30, slot_schritt: 30, vorlauf_stunden: 12, tage_voraus: 14, anteil_prozent: 25, allein_prozent: 85, beide_louis_prozent: 50, ...PREIS_STANDARD },
     ];
   }
   schreiben(speicher);
@@ -569,12 +569,24 @@ async function lohnBuchen(neuA) {
   await laden("auszahlungen");
 }
 
-// Dauer eines Auftrags in Minuten: echt > Stunden > geplant > Termindauer. geschaetzt = nicht echt eingetragen
+// v25: geplante Dauer nach Auftragsgröße – von Hand > Stunden > 1,5 Min. pro Euro (ohne Anfahrt), mind. 1 Std., auf 15 Min. gerundet
+// (gleiche Regel steht in supabase/quellen/gemeinsam.ts → planMinuten, für freie Website-Termine und Google-Kalender)
+const MIN_PRO_EURO = 1.5;
+function dauerSchaetzung(a) {
+  const slot = Number(daten.einstellungen?.[0]?.slot_minuten) || 60;
+  if (istTermin(a)) return Number(a.dauer_min) || slot;
+  if (zahl(a.dauer_min)) return Number(a.dauer_min);
+  if (zahl(a.stunden)) return Math.round(Number(a.stunden) * 60);
+  const betrag = zahl(a.bekommen) ?? zahl(a.geschaetzt);
+  if (betrag === null) return slot;
+  const preis = Math.max(0, betrag - (zahl(a.anfahrt) || 0));
+  return Math.max(60, Math.round((preis * MIN_PRO_EURO) / 15) * 15);
+}
+
+// Dauer eines Auftrags in Minuten: echt > geplant (dauerSchaetzung). geschaetzt = nicht echt eingetragen
 function dauerVon(a) {
   if (zahl(a.dauer_echt_min)) return { min: Number(a.dauer_echt_min), geschaetzt: false };
-  if (zahl(a.stunden)) return { min: Math.round(Number(a.stunden) * 60), geschaetzt: true };
-  if (zahl(a.dauer_min)) return { min: Number(a.dauer_min), geschaetzt: true };
-  return { min: Number(daten.einstellungen?.[0]?.slot_minuten) || 60, geschaetzt: true };
+  return { min: dauerSchaetzung(a), geschaetzt: true };
 }
 
 const stundenText = (min) => `${(Math.round((min / 60) * 10) / 10).toLocaleString("de-DE")} h`;
@@ -1335,11 +1347,63 @@ function ansichtKunden() {
 const nebenanUrl = (link) => (/^https?:\/\//i.test(link) ? link : `https://nebenan.de/${String(link).replace(/^\/+/, "")}`);
 
 // Ein Eintrag im Verlauf; lange Nachrichten (z. B. reinkopierte Mails) sind eingeklappt
+// v25: Website-Anfrage-Notiz („Anfrage über die Website, Wunschtermin …: „…“") in ihre Teile zerlegen
+const WERBE_KANAL = { email: "E-Mail", whatsapp: "WhatsApp" };
+const werbeKanaele = (liste) => (liste || []).filter(Boolean).map((k) => WERBE_KANAL[k] || k).join(", ");
+function anfrageTeile(text) {
+  text = String(text || "");
+  if (!text.startsWith("Anfrage über die Website")) return null;
+  const tz = text.indexOf(": „");
+  const kopf = tz >= 0 ? text.slice(0, tz) : text;
+  let rumpf = tz >= 0 ? text.slice(tz + 3).replace(/“\s*$/, "") : "";
+  const t = { wunsch: (kopf.match(/Wunschtermin (\d\d\.\d\d\. \d\d:\d\d)/) || [])[1] || "", fenster: (kopf.match(/· (.+ Fenster)/) || [])[1] || "" };
+  const [vorWerbung, werbung = ""] = rumpf.split("--- Freiwilliger Werbe-Anmeldewunsch ---");
+  const [nachricht, anfahrtTeil = ""] = vorWerbung.split("--- Anfahrt und Gesamtschätzung ---");
+  t.nachricht = nachricht.trim();
+  const anf = anfahrtTeil.match(/([\d.,]+)\s*€ zusätzlich, einmal pro Auftrag · ([\d.,]+) km Luftlinie/);
+  if (anf) { t.anfahrt = `${anf[1].replace(/,00$/, "")} €`; t.km = `${anf[2]} km Luftlinie`; }
+  else if (/Noch offen/.test(anfahrtTeil)) t.anfahrt = "noch offen";
+  const ges = anfahrtTeil.match(/Ca\. ([\d.,]+) € inklusive/);
+  if (ges) t.gesamt = `ca. ${ges[1]} €${anf ? " inkl. Anfahrt" : ""}`;
+  else if (/Leistung nach Absprache/.test(anfahrtTeil)) t.gesamt = "nach Absprache";
+  const kan = werbung.match(/Gewählte Kanäle: (.*)/);
+  t.werbung = kan ? `${werbeKanaele(kan[1].split(/,\s*/))} · noch nicht bestätigt` : "";
+  // Alles Übrige (Tarif, Wortlaut, Zeitpunkte …) für „Sonstiges“
+  t.rest = [anfahrtTeil.split("\n").filter((z) => z.trim() && !/zusätzlich, einmal pro Auftrag|^Ca\. |Noch offen|Leistung nach Absprache/.test(z)).join("\n"), werbung.trim()].filter(Boolean).join("\n\n").trim();
+  return t;
+}
+
+function anfrageHtml(t) {
+  const reihe = (titel, wert) => (wert ? `<div><dt>${titel}</dt><dd>${esc(wert)}</dd></div>` : "");
+  return `<span class="anfrage-info__titel">Anfrage über die Website</span>
+    <dl class="anfrage-info">
+      ${reihe("Wunschtermin", t.wunsch)}
+      ${reihe("Fenster", t.fenster)}
+      ${reihe("Geschätzt", t.gesamt)}
+      ${reihe("Anfahrt", [t.anfahrt, t.km].filter(Boolean).join(" · "))}
+      ${reihe("Nachricht", t.nachricht ? `„${t.nachricht}“` : "")}
+      ${reihe("Werbung", t.werbung || (t.rest || t.anfahrt ? "nein" : ""))}
+    </dl>
+    ${t.rest ? `<details class="anfrage-info__rest"><summary>Sonstiges</summary><p>${esc(t.rest)}</p></details>` : ""}`;
+}
+
+// Notiztext als HTML: Website-Anfragen geordnet, alles andere wie geschrieben
+// v25: Werbe-Wunsch von der Website (Spalte kunden.werbung)
+function werbungText(k) {
+  const w = k?.werbung;
+  if (!w || !w.kanaele?.length) return "";
+  const wann = w.zeitpunkt && !isNaN(new Date(w.zeitpunkt)) ? ` am ${fmtDatum.format(new Date(w.zeitpunkt))}` : "";
+  return `${werbeKanaele(w.kanaele)} angeklickt${wann} · ${w.status === "bestaetigt" ? "bestätigt" : "noch nicht bestätigt"}`;
+}
+
+const notizTextHtml = (text) => { const t = anfrageTeile(text); return t ? anfrageHtml(t) : esc(text); };
+
 function verlaufEintrag(n) {
   const quelle = n.quelle && n.quelle !== "notiz" ? NACHRICHT_QUELLEN[n.quelle] : "";
   const text = String(n.text || "");
+  const anfrage = anfrageTeile(text);
   const lang = text.length > 280 || text.split("\n").length > 5;
-  const inhaltText = lang
+  const inhaltText = anfrage ? `<div class="anfrage-info__box">${anfrageHtml(anfrage)}</div>` : lang
     ? `<details class="verlauf__lang"><summary>${esc(text.slice(0, 160).replace(/\s+/g, " "))} …</summary><p>${esc(text)}</p></details>`
     : `<span>${esc(text)}</span>`;
   return `<li class="${n.automatisch ? "auto" : ""}${quelle ? " verlauf--nachricht" : ""}">
@@ -1395,6 +1459,7 @@ function ansichtKunde(id) {
           ${!k.telefon && !k.email && !k.adresse && !k.nebenan_link ? `<p class="leise">Noch keine Kontaktdaten.</p>` : ""}
         </div>
         ${kam ? `<p class="kam-ueber">Kam über: <b>${esc(kanalName(kam))}</b></p>` : ""}
+        ${werbungText(k) ? `<p class="kam-ueber">Werbung: <b>${esc(werbungText(k))}</b></p>` : ""}
       </section>
 
       <section class="karte" aria-labelledby="t-zahlen">
@@ -2085,7 +2150,8 @@ function ansichtZeiten() {
 
     <section class="karte">
       ${kartenTitel("t-einstell", "violett", "zahl", "Einstellungen")}
-      <label class="feld"><span>Termindauer (Minuten)</span><input type="number" class="eingabe" value="${einstell.slot_minuten}" min="15" step="15" data-einstell="true" data-einstell-field="slot_minuten" /></label>
+      <label class="feld"><span>Länge neuer Website-Termine (Min.)</span><input type="number" class="eingabe" value="${einstell.slot_minuten}" min="15" step="15" data-einstell="true" data-einstell-field="slot_minuten" /></label>
+      <label class="feld"><span>Puffer vor/nach Terminen (Min.)</span><input type="number" class="eingabe" value="${einstell.puffer_min ?? 30}" min="0" step="15" data-einstell="true" data-einstell-field="puffer_min" /></label>
       <label class="feld"><span>Startzeiten im Abstand von</span><select class="eingabe" data-einstell="true" data-einstell-field="slot_schritt">${[15, 30, 60].map((m) => `<option value="${m}" ${(einstell.slot_schritt ?? 30) === m ? "selected" : ""}>${m} Minuten</option>`).join("")}</select></label>
       <p class="hinweis">Beispiel: 90 Minuten Dauer und 30 Minuten Abstand ergibt 15:00, 15:30, 16:00 … – solange die ganze Dauer frei ist.</p>
       <label class="feld"><span>Vorlauf (Stunden)</span><input type="number" class="eingabe" value="${einstell.vorlauf_stunden}" min="0" step="1" data-einstell="true" data-einstell-field="vorlauf_stunden" /></label>
@@ -2532,6 +2598,10 @@ function dialogAuftrag(a = {}, kundeId = null) {
         <label class="feld"><span>Stunden</span><input name="stunden" type="number" inputmode="decimal" min="0" step="0.25" value="${esc(a.stunden ?? "")}" /></label>
         <label class="feld"><span>Stundenlohn (€)</span><input name="stundensatz" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(a.stundensatz ?? p.stundensatz)}" /></label>
       </div>
+      <div class="feldreihe" data-anfahrt-reihe>
+        <label class="feld"><span>Anfahrt (€)</span><input name="anfahrt" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(a.anfahrt ?? "")}" placeholder="0" /></label>
+        <label class="feld"><span>Geplante Dauer (Std.)</span><input name="dauer_plan" type="text" inputmode="decimal" value="${esc(stundenFeld(zahl(a.dauer_min)))}" data-dauer-plan /></label>
+      </div>
       <div class="feldreihe">
         <label class="feld"><span data-geschaetzt-label>Geschätzter Preis (€)</span><input name="geschaetzt" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(a.geschaetzt ?? "")}" data-geschaetzt /></label>
         <label class="feld"><span>Wirklich bekommen (€)</span><input name="bekommen" type="number" inputmode="decimal" min="0" step="0.5" value="${esc(a.bekommen ?? "")}" placeholder="nach dem Termin" /></label>
@@ -2550,7 +2620,8 @@ function dialogAuftrag(a = {}, kundeId = null) {
       <label class="feld"><span>Notizen zum Auftrag</span><textarea name="notiz" rows="3" placeholder="Zum Beispiel: Hund im Garten, Leiter mitbringen, Schlüssel beim Nachbarn">${esc(a.notiz)}</textarea></label>
       ${a.id ? `<label class="feld" style="grid-template-columns:auto 1fr;align-items:center;gap:.6rem"><input type="checkbox" name="abgesagt" ${a.abgesagt ? "checked" : ""} style="width:22px;min-height:22px" /><span>Abgesagt</span></label>` : ""}`,
     nachOeffnen: (form) => {
-      let vonHand = a.id && zahl(a.geschaetzt) !== null && zahl(a.geschaetzt) !== schaetzen(a);
+      const mitAnfahrt = (x, anf) => (x === null ? null : Math.round((x + (zahl(anf) || 0)) * 100) / 100);
+      let vonHand = a.id && zahl(a.geschaetzt) !== null && zahl(a.geschaetzt) !== mitAnfahrt(schaetzen(a), a.anfahrt);
       const feld = $("[data-geschaetzt]", form);
       const aktualisieren = () => {
         const werte = Object.fromEntries(new FormData(form).entries());
@@ -2560,11 +2631,15 @@ function dialogAuftrag(a = {}, kundeId = null) {
         $("[data-nur-stunden]", form).hidden = fensterArt;
         $("[data-nur-stundenlohn]", form).hidden = fensterArt || fest;
         $("[data-geschaetzt-label]", form).textContent = fest ? "Festpreis (€)" : "Geschätzter Preis (€)";
-        const s = schaetzen(werte);
+        const anf = zahl(werte.anfahrt);
+        const s = mitAnfahrt(schaetzen(werte), anf);
         const satz = zahl(werte.stundensatz) ?? p.stundensatz;
         $("[data-schaetz-hinweis]", form).textContent = fest
           ? "Festpreis: Betrag oben direkt eintragen."
-          : s === null ? "" : `Rechnung: ${fensterArt ? `${werte.fenster_normal || 0} × ${euro(p.preis_normal)} + ${werte.fenster_boden || 0} × ${euro(p.preis_boden)}, mindestens ${euro(p.mindestpreis)}` : `${Number(werte.stunden).toLocaleString("de-DE")} h × ${euro(satz)}`} = ${euro(s)}`;
+          : s === null ? "" : `Rechnung: ${fensterArt ? `${werte.fenster_normal || 0} × ${euro(p.preis_normal)} + ${werte.fenster_boden || 0} × ${euro(p.preis_boden)}, mindestens ${euro(p.mindestpreis)}` : `${Number(werte.stunden).toLocaleString("de-DE")} h × ${euro(satz)}`}${anf ? ` + ${euro(anf)} Anfahrt` : ""} = ${euro(s)}`;
+        // Geplante Dauer: leer = automatisch nach Auftragsgröße
+        const auto = dauerSchaetzung({ ...werte, dauer_min: null, stunden: fensterArt || fest ? null : zahl(werte.stunden), geschaetzt: zahl(werte.bekommen) === null ? (vonHand ? zahl(feld.value) : s) : null, bekommen: zahl(werte.bekommen), anfahrt: anf });
+        $("[data-dauer-plan]", form).placeholder = `automatisch ${stundenFeld(auto)}`;
         if (!vonHand && s !== null) feld.value = s;
         const betrag = zahl(werte.bekommen) ?? zahl(feld.value);
         const teil = lohnAufteilung({ bekommen: betrag, team: teamAusForm(form), ...prozenteAusForm(form, a) });
@@ -2591,6 +2666,8 @@ function dialogAuftrag(a = {}, kundeId = null) {
         stundensatz: fensterArt || f.preisart === "fest" ? null : zahl(f.stundensatz),
         geschaetzt: zahl(f.geschaetzt),
         bekommen: zahl(f.bekommen),
+        anfahrt: zahl(f.anfahrt),
+        dauer_min: minutenAus(f.dauer_plan),
         abgesagt: Boolean(f.abgesagt),
         // Woher der Kunde kommt, steht seit v18 nur noch beim Kunden
         kanal: a.kanal || kanalAusKunde(kundeVon(f.kunde_id)),
@@ -3082,7 +3159,7 @@ function terminkarteInhalt(a, { erfolg = false } = {}) {
   const stunden = zahl(a.stunden);
   const besuche = k ? auftraegeVon(k.id).filter((x) => zahl(x.bekommen) !== null).length : 0;
   const quote = k ? trinkgeldQuote(auftraegeVon(k.id)) : null;
-  const dauerMin = termin ? Number(a.dauer_min) || 0 : stunden ? stunden * 60 : 0;
+  const dauerMin = termin ? Number(a.dauer_min) || 0 : dauerSchaetzung(a);
 
   const [chipText, chipArt] = aus
     ? [a.abgesagt ? "Abgesagt" : "Abgelehnt", "rot"]
@@ -3169,7 +3246,7 @@ function terminkarteInhalt(a, { erfolg = false } = {}) {
 
   const notizen = [
     a.notiz && `<div class="tb-tile tb-notiz tb-breit"><span class="tb-mini">${tbSvg(TB_ICON.notiz)}Notiz</span><p class="tb-wert">${esc(a.notiz)}</p></div>`,
-    notiz && `<div class="tb-tile tb-notiz tb-notiz--leise tb-breit"><span class="tb-mini">${tbSvg(ICONS.stift)}Letzte Notiz zum Kunden · ${esc(fmtDatum.format(new Date(notiz.erstellt)))}</span><p class="tb-wert">${esc(notiz.text)}</p></div>`,
+    notiz && `<div class="tb-tile tb-notiz tb-notiz--leise tb-breit"><span class="tb-mini">${tbSvg(ICONS.stift)}Letzte Notiz zum Kunden · ${esc(fmtDatum.format(new Date(notiz.erstellt)))}</span>${anfrageTeile(notiz.text) ? `<div class="tb-wert">${notizTextHtml(notiz.text)}</div>` : `<p class="tb-wert">${esc(notiz.text)}</p>`}</div>`,
   ].filter(Boolean).join("");
 
   const kacheln = termin

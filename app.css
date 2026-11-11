@@ -4000,3 +4000,13 @@ a.kachel:active,
 /* v23: Funkstille + Kundenname bei Aufgaben vorne */
 .status--funkstille { background: #eef0f3; color: #6b7180; }
 .aufgabe .zeile__unter .aufgabe__kunde { font-weight: 700; color: var(--accent); text-decoration: none; }
+
+/* v25: Website-Anfrage geordnet (Verlauf + Auftragskarte) */
+.anfrage-info__titel { display: block; font-weight: 700; margin-bottom: 6px; }
+.anfrage-info { display: grid; gap: 4px; margin: 0; }
+.anfrage-info > div { display: grid; grid-template-columns: 112px 1fr; gap: 10px; align-items: baseline; }
+.anfrage-info dt { color: var(--leise, #6b7180); font-size: 0.86em; }
+.anfrage-info dd { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.anfrage-info__rest { margin-top: 8px; font-size: 0.86em; color: var(--leise, #6b7180); }
+.anfrage-info__rest summary { cursor: pointer; font-weight: 600; }
+.anfrage-info__rest p { margin: 6px 0 0; white-space: pre-line; overflow-wrap: anywhere; }

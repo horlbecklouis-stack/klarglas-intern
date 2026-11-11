@@ -416,6 +416,7 @@ function hKunde(id) {
     k.email ? wert("E-Mail", `<span class="h-akzent">${esc(k.email)}</span>`, `mailto:${k.email}`) : "",
     k.adresse ? wert("Adresse", `<span class="h-akzent">${esc(k.adresse)}</span>`, hKarteUrl(k.adresse)) : "",
     kam ? wert("Kam über", esc(kanalName(kam))) : "",
+    werbungText(k) ? wert("Werbung", esc(werbungText(k))) : "",
   ].join("");
 
   const stats = `<div class="h-stats">
@@ -697,7 +698,6 @@ function hGeld(id) {
 const kalEintraege = () => daten.auftraege.filter((a) => a.datum && !a.abgesagt && a.termin_status !== "abgelehnt");
 
 function kalDauer(a) {
-  if (istTermin(a)) return Number(a.dauer_min) || zahl(daten.einstellungen[0]?.slot_minuten) || 60;
   return dauerVon(a).min || 60;
 }
 
@@ -1908,6 +1908,13 @@ function hfAuftrag(form) {
   leistung.addEventListener("change", fensterSichtbar);
   fensterSichtbar();
 
+  // v25: Anfahrt + geplante Dauer (leer = automatisch nach Auftragsgröße)
+  const anfReihe = form.querySelector("[data-anfahrt-reihe]");
+  anfReihe.className = "hf-paar";
+  anfReihe.querySelectorAll("input").forEach((i) => i.classList.add("hf-gross-feld"));
+  $("span", hfFeld(form, "dauer_plan")).textContent = "Dauer (Std.)";
+  const anfKarte = hfKarte("Anfahrt & Dauer", "pfeil", "#13a06b", [anfReihe]);
+
   const datum = form.querySelector("[name=datum]");
   const vorl = hfSchalter(form.querySelector(".schalter-zeile"), "Noch nicht fest", "Steht als „Geplant“ mit ? im Kalender", "#e67c73");
 
@@ -1933,6 +1940,7 @@ function hfAuftrag(form) {
     hfKarte("", "", "", [hfKunde(form.querySelector("[name=kunde_id]")), leistungKacheln]),
     fensterKarte,
     nachbarKarte,
+    anfKarte,
     hfKarte("Wann?", "wann", "#2b5cff", [...hfWann(datum), vorl]),
     wer,
     kontakt,

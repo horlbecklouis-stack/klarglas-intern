@@ -4254,3 +4254,7 @@ body.handy .h-diagramm .diagramm__monat { fill: color-mix(in srgb, var(--c, #2b5
 
 /* v23: Kundenname bei Aufgaben vorne */
 .h-aufgabe__kunde { font-weight: 700; color: var(--h-blau); }
+
+/* v25: gewählter Verlauf-Chip schwarz mit weißer Schrift (vorher überdeckte der helle Hintergrund) */
+body.handy .h-chips--wahl .h-chip:has(input:checked) { background: #000; color: #fff; }
+body.handy .anfrage-info > div { grid-template-columns: 96px 1fr; }
