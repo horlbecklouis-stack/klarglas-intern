@@ -14,7 +14,7 @@ self.addEventListener("push", (e) => {
       body: d.text || "Neue Anfrage",
       icon: "icon-180.png?v=3",
       badge: "icon-180.png?v=3",
-      tag: "anfrage",
+      tag: d.tag || "anfrage",
       renotify: true,
       data: { url: d.url || "./#uebersicht" },
     })

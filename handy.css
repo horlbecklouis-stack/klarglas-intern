@@ -4258,3 +4258,115 @@ body.handy .h-diagramm .diagramm__monat { fill: color-mix(in srgb, var(--c, #2b5
 /* v25: gewählter Verlauf-Chip schwarz mit weißer Schrift (vorher überdeckte der helle Hintergrund) */
 body.handy .h-chips--wahl .h-chip:has(input:checked) { background: #000; color: #fff; }
 body.handy .anfrage-info > div { grid-template-columns: 96px 1fr; }
+
+/* ===================== v26: Wichtig, Nachfassen, WhatsApp (Handy) ===================== */
+
+body.handy .h-abschnitt--wichtig .h-abschnitt__kopf h2 { color: #c81e1e; }
+body.handy .h-abschnitt--wichtig:not(.h-abschnitt--glas) .h-gruppe {
+  background: color-mix(in srgb, #c81e1e 9%, #fff);
+  box-shadow: inset 0 0 0 1px rgba(200, 30, 30, 0.18);
+}
+
+.h-flagge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--h-dritt);
+  cursor: pointer;
+  transition: transform 350ms var(--h-feder), color 200ms ease, background-color 200ms ease;
+}
+.h-flagge svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+.h-flagge:active { transform: scale(0.88); }
+.h-flagge[aria-pressed="true"] { color: #c81e1e; background: rgba(200, 30, 30, 0.1); }
+.h-flagge[aria-pressed="true"] svg { fill: currentColor; fill-opacity: 0.2; }
+
+.h-aufgabe--wichtig .h-aufgabe__titel { color: #c81e1e; font-weight: 600; }
+.h-aufgabe--spaeter .h-aufgabe__titel { color: var(--h-zweit); }
+.h-aufgabe--spaeter .h-haken { border-style: dashed; }
+
+.h-aufgabe__zusatz {
+  justify-self: start;
+  margin-top: 3px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fff1d6;
+  color: #9a5b00;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.h-aufgabe__knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 10px 52px;
+  background: var(--h-karte);
+}
+body.handy .h-abschnitt--glas .h-aufgabe__knoepfe { background: transparent; }
+
+.h-pill svg { width: 16px; height: 16px; margin-right: 6px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+.h-pill--wa { background: #1fa855; color: #fff; }
+a.h-pill { text-decoration: none; }
+
+.anrede-marke {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  vertical-align: 1px;
+}
+.anrede-marke--sie { background: #eef1f7; color: #010f2b; }
+.anrede-marke--du { background: #e6f5ee; color: #0f7a4b; }
+
+.h-anrede {
+  justify-content: center;
+  width: max-content;
+  margin: 10px auto 2px;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 1px 2px rgba(11, 21, 48, 0.08);
+}
+.h-anrede .h-chip { min-height: 30px; padding: 0 16px; background: transparent; }
+.h-anrede .h-chip[aria-pressed="true"] { background: var(--navy); color: #fff; }
+
+.h-kontakt-knoepfe { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); margin: 10px 0 18px; }
+.h-kontakt-knoepfe .h-pill { min-height: 44px; padding: 0 10px; font-size: 14.5px; }
+.h-doppel .h-pill.h-pill--wa { background: #1fa855; color: #fff; box-shadow: 0 6px 14px -10px rgba(31, 168, 85, 0.8); }
+
+.h-kunde-status__feld { display: grid; gap: 8px; padding: 4px 0 10px; }
+.h-kunde-status__feld + .h-kunde-status__feld { padding-top: 12px; border-top: 0.5px solid var(--h-dritt); }
+.h-kunde-status__titel { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; }
+.h-kunde-status__titel svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.h-kunde-status__titel small { font-weight: 400; }
+body.handy :is(.h-kunde-status, .nachfass-fenster) .h-chips--wahl { flex-wrap: wrap; overflow: visible; gap: 6px; }
+body.handy :is(.h-kunde-status, .nachfass-fenster) .h-chips--wahl .h-chip { padding: 0 11px; font-size: 14px; }
+body.handy :is(.h-kunde-status, .nachfass-fenster) .h-chips--wahl .h-chip[aria-pressed="true"] { background: var(--navy); color: #fff; }
+body.handy :is(.h-kunde-status, .nachfass-fenster) .h-chips--wahl .h-chip--drin[aria-pressed="true"],
+body.handy :is(.h-kunde-status, .nachfass-fenster) .h-chips--wahl .h-chip--bewertet[aria-pressed="true"] { background: #1fa855; color: #fff; }
+body.handy :is(.h-kunde-status, .nachfass-fenster) .h-chips--wahl .h-chip--gefragt[aria-pressed="true"] { background: #9a5b00; color: #fff; }
+body.handy :is(.h-kunde-status, .nachfass-fenster) .h-chips--wahl .h-chip--abgelehnt[aria-pressed="true"] { background: #6b7280; color: #fff; }
+body.handy .h-anrede .h-chip[aria-pressed="true"] { background: var(--navy); color: #fff; }
+
+.kunde-marke { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: 5px; vertical-align: -2px; }
+.kunde-marke svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.kunde-marke--wa { color: #1fa855; }
+.kunde-marke--stern { color: #e0a100; }
+.kunde-marke--stern svg { fill: currentColor; }
+
+body.handy .hf-prio > [aria-checked="true"] .hf-punkt { background: #fff; }
+
+.h-nachfass-einstell { display: grid; gap: 12px; }
+.h-nachfass-einstell .feld { display: grid; gap: 6px; }
+.h-nachfass-einstell .feld > span { font-size: 13px; font-weight: 600; color: var(--h-zweit); }
+.h-nachfass-einstell .eingabe { width: 100%; box-sizing: border-box; font-size: 16px; }
+.h-nachfass-einstell .nachfass-text { min-height: 16rem; line-height: 1.45; }

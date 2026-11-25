@@ -4010,3 +4010,132 @@ a.kachel:active,
 .anfrage-info__rest { margin-top: 8px; font-size: 0.86em; color: var(--leise, #6b7180); }
 .anfrage-info__rest summary { cursor: pointer; font-weight: 600; }
 .anfrage-info__rest p { margin: 6px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
+
+/* ===================== v26: Wichtig, Nachfassen, WhatsApp ===================== */
+
+.badge--rot { --tone: var(--error); --tone-wash: var(--rot-wash); }
+
+.karte--wichtig {
+  border: 1px solid rgba(200, 30, 30, 0.28);
+  background: linear-gradient(180deg, var(--rot-wash), var(--white) 70%);
+  box-shadow: 0 1px 0 rgba(200, 30, 30, 0.06), 0 10px 28px -18px rgba(200, 30, 30, 0.45);
+}
+.karte--wichtig .karte__titel { color: var(--error); }
+
+.aufgaben-abschnitt--wichtig .aufgaben-abschnitt__titel { color: var(--error); }
+
+.flagge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease, opacity var(--dur-hover) ease, transform 160ms var(--ease-out);
+}
+.flagge svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.flagge:active { transform: scale(0.92); }
+.flagge[aria-pressed="true"] { color: var(--error); background: var(--rot-wash); opacity: 1; }
+.flagge[aria-pressed="true"] svg { fill: currentColor; fill-opacity: 0.18; }
+.flagge:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; opacity: 1; }
+.aufgabe:hover .flagge { opacity: 1; }
+
+.aufgabe--wichtig .zeile__titel { color: var(--error); }
+.aufgabe--spaeter .zeile__titel,
+.aufgabe--spaeter .zeile__unter { color: var(--ink-3); }
+.aufgabe--spaeter .haken { border-style: dashed; }
+
+.aufgabe__zusatz {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: var(--pill);
+  background: var(--bernstein-wash, #fff1d6);
+  color: var(--bernstein-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.aufgabe__knoepfe { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.45rem; }
+
+.knopf svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.knopf--wa { background: #1fa855; border-color: #1fa855; color: #fff; }
+@media (hover: hover) and (pointer: fine) {
+  .knopf--wa:hover { background: #17924a; border-color: #17924a; }
+}
+
+.anrede-marke {
+  display: inline-block;
+  margin-right: 0.3rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 6px;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  vertical-align: 0.1em;
+}
+.anrede-marke--sie { background: var(--navy-wash, #e8ebf3); color: var(--navy); }
+.anrede-marke--du { background: var(--gruen-wash); color: var(--gruen-text); }
+
+.anrede-schalter { flex-wrap: nowrap; overflow: visible; padding: 3px; border-radius: var(--pill); background: var(--surface); gap: 2px; }
+.anrede-schalter .chip { min-height: 32px; padding: 0.25rem 0.8rem; border-color: transparent; background: transparent; }
+.anrede-schalter .chip[aria-pressed="true"] { background: var(--navy); color: var(--cream); }
+
+.kontakt-knoepfe { margin-top: 0.75rem; }
+
+.kunde-status { display: grid; gap: 0.9rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.kunde-status__zeile { display: grid; gap: 0.45rem; }
+.kunde-status__titel { display: flex; align-items: center; gap: 0.45rem; font-weight: 700; font-size: 0.9375rem; }
+.kunde-status__titel svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.kunde-status__titel small { font-weight: 500; }
+.chip--status { min-height: 34px; padding: 0.3rem 0.8rem; }
+.chip--status.chip--drin[aria-pressed="true"],
+.chip--status.chip--bewertet[aria-pressed="true"] { background: #1fa855; border-color: #1fa855; color: #fff; }
+.chip--status.chip--gefragt[aria-pressed="true"] { background: var(--bernstein-text); border-color: var(--bernstein-text); color: #fff; }
+.chip--status.chip--abgelehnt[aria-pressed="true"] { background: var(--ink-3); border-color: var(--ink-3); color: #fff; }
+
+.kunde-marke { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: 0.3rem; vertical-align: -0.2em; }
+.kunde-marke svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.kunde-marke--wa { color: #1fa855; }
+.kunde-marke--stern { color: #e0a100; }
+.kunde-marke--stern svg { fill: currentColor; }
+
+.segment--prio { grid-template-columns: repeat(3, 1fr); }
+.segment--prio .segment__knopf--wichtig:has(input:checked) { background: var(--error); color: #fff; }
+.segment--prio .segment__knopf--spaeter:has(input:checked) { background: var(--ink-3); color: #fff; }
+
+.toast--knopf { display: flex; align-items: center; gap: 0.8rem; pointer-events: auto; padding-right: 0.45rem; }
+.toast__knopf {
+  flex: none;
+  padding: 0.4rem 0.85rem;
+  border: 0;
+  border-radius: var(--pill);
+  background: #1fa855;
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.feld--hervor { animation: feld-hervor 1.6s var(--ease-out); border-radius: 14px; }
+@keyframes feld-hervor {
+  0%, 35% { box-shadow: 0 0 0 4px rgba(43, 92, 255, 0.35); }
+  100% { box-shadow: 0 0 0 4px rgba(43, 92, 255, 0); }
+}
+
+.nachfass-fenster { display: grid; gap: 1rem; margin-top: 0.75rem; }
+.nachfass-feld > span { display: block; margin-bottom: 0.4rem; font-weight: 700; }
+.nachfass-fenster .chips--wahl .chip[aria-pressed="true"] { background: var(--navy); color: var(--cream); }
+.nachfass-text { min-height: 15rem; font-family: inherit; line-height: 1.45; resize: vertical; }
+.nachfass-texte { margin-top: 0.75rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .feld--hervor { animation: none; box-shadow: 0 0 0 3px rgba(43, 92, 255, 0.35); }
+}

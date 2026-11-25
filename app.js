@@ -76,8 +76,192 @@ const heuteIso = () => isoAusDatum(new Date());
 
 // „Wieder melden“-Aufgaben erst 3 Tage vor dem fälligen Tag in den Listen zeigen (Push kommt trotzdem am Tag)
 const istWiederAufgabe = (a) => /: wieder .+ anbieten$/.test(a.titel || "");
-const aufgabeSichtbar = (a) => a.erledigt || !istWiederAufgabe(a) || !a.faellig || a.faellig <= isoAusDatum(new Date(Date.now() + 3 * 86400000));
+const aufgabeSichtbar = (a) => a.erledigt || a.prioritaet === "wichtig" || !istWiederAufgabe(a) || !a.faellig || a.faellig <= isoAusDatum(new Date(Date.now() + 3 * 86400000));
 const sichtbareAufgaben = () => daten.aufgaben.filter(aufgabeSichtbar);
+
+/* ===================== v26: Wichtigkeit, Nachfassen, WhatsApp ===================== */
+
+const PRIO_LISTE = [
+  { id: "wichtig", name: "Wichtig", farbe: "#c81e1e" },
+  { id: "normal", name: "Normal", farbe: "#2b5cff" },
+  { id: "spaeter", name: "Später", farbe: "#8a93a6" },
+];
+const prioRang = (a) => ({ wichtig: 0, normal: 1, spaeter: 2 })[a.prioritaet] ?? 1;
+const istWichtig = (a) => a.prioritaet === "wichtig";
+const istNachfass = (a) => Boolean(a.nachfass_auftrag_id);
+const wichtigeAufgaben = () => daten.aufgaben.filter((a) => !a.erledigt && istWichtig(a)).sort(nachFaelligkeit);
+
+// Täglicher Push: Ist die Uhrzeit heute schon vorbei, kommt der erste erst morgen
+function tagesPushStart(uhr) {
+  const [h, m] = String(uhr || "16:00").split(":").map(Number);
+  const d = new Date();
+  return d.getHours() * 60 + d.getMinutes() >= (h || 0) * 60 + (m || 0) ? heuteIso() : null;
+}
+
+const WA_KANAL = [["nicht_gefragt", "Nicht gefragt"], ["gefragt", "Gefragt"], ["drin", "Drin"], ["abgelehnt", "Abgelehnt"]];
+const BEWERTUNG = [["nicht_gefragt", "Nicht gefragt"], ["gefragt", "Gefragt"], ["bewertet", "Bewertet"], ["abgelehnt", "Abgelehnt"]];
+const KUNDE_FELDER = {
+  wa_kanal: { name: "WhatsApp-Kanal", liste: WA_KANAL },
+  bewertung: { name: "Google-Bewertung", liste: BEWERTUNG },
+};
+const kanalWert = (k) => k?.wa_kanal || "nicht_gefragt";
+const bewertungWert = (k) => k?.bewertung || "nicht_gefragt";
+const kanalOffen = (k) => !["drin", "abgelehnt"].includes(kanalWert(k));
+const bewertungOffen = (k) => !["bewertet", "abgelehnt"].includes(bewertungWert(k));
+const anredeVon = (k) => (k?.anrede === "du" ? "du" : "sie");
+const anredeMarke = (k) => (k ? `<span class="anrede-marke anrede-marke--${anredeVon(k)}" title="Anrede">${anredeVon(k) === "du" ? "Du" : "Sie"}</span>` : "");
+
+async function kundeFeldSetzen(kundeId, feld, wert) {
+  const k = kundeVon(kundeId);
+  if (!k) return;
+  if (feld === "anrede") {
+    if (anredeVon(k) === wert) return;
+    await aendern("kunden", kundeId, { anrede: wert });
+    return;
+  }
+  const def = KUNDE_FELDER[feld];
+  if (!def || (k[feld] || "nicht_gefragt") === wert) return;
+  await aendern("kunden", kundeId, { [feld]: wert, [`${feld}_am`]: new Date().toISOString() });
+  await notiz(kundeId, `${def.name} → ${def.liste.find(([w]) => w === wert)?.[1] || wert}`);
+}
+
+// Telefonnummer für wa.me: nur Ziffern, 0049/0 → 49
+function waNummer(tel) {
+  let n = String(tel || "").replace(/\D/g, "");
+  if (n.startsWith("00")) n = n.slice(2);
+  else if (n.startsWith("0")) n = `49${n.slice(1)}`;
+  return n.length >= 8 ? n : "";
+}
+const waLink = (k, text = "") => {
+  const n = waNummer(k?.telefon);
+  return n ? `https://wa.me/${n}${text ? `?text=${encodeURIComponent(text)}` : ""}` : "";
+};
+
+// Kontakt als .vcf – iPhone und Mac bieten dann „Kontakt hinzufügen“ an
+function kontaktSpeichern(k) {
+  if (!k) return;
+  const v = (s) => String(s || "").replace(/\\/g, "\\\\").replace(/([,;])/g, "\\$1").replace(/\n/g, "\\n");
+  const zeilen = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `FN:${v(k.name)}`,
+    `N:;${v(k.name)};;;`,
+    "ORG:KlarGlas-Kunde",
+    k.telefon ? `TEL;TYPE=CELL:${String(k.telefon).replace(/[^\d+]/g, "")}` : "",
+    k.email ? `EMAIL:${v(k.email)}` : "",
+    k.adresse ? `ADR;TYPE=HOME:;;${v(k.adresse)};Berlin;;;Deutschland` : "",
+    "END:VCARD",
+  ].filter(Boolean).join("\r\n");
+  const url = URL.createObjectURL(new Blob([zeilen], { type: "text/vcard;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${(k.name || "Kontakt").replace(/[\\/:*?"<>|]/g, "")}.vcf`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+const STANDARD_BEWERTUNG_LINK = "https://g.page/r/CSgnT8YVCx-kEBM/review";
+const STANDARD_KANAL_LINK = "https://whatsapp.com/channel/0029Vb9NU4h9MF8wCqAsE50G";
+const STANDARD_TEXT_SIE = `Hallo {Name},
+{Absender} hier von KlarGlas. [Ich war|Wir waren] am {Tag} bei Ihnen zum Fensterputzen.
+
+Sind Sie zufrieden mit dem Ergebnis? Falls etwas nicht passt, sagen Sie gern Bescheid, dann [komme ich|kommen wir] noch mal kurz vorbei.
+
+Ansonsten würden wir uns sehr über eine Google-Bewertung freuen: {Bewertungslink}
+
+Oder treten Sie gern unserem WhatsApp-Kanal bei, da gibt es ab und zu Rabatte und Aktionen, damit Sie nichts verpassen: {Kanallink}
+
+Viele Grüße
+{Absender}`;
+const STANDARD_TEXT_DU = `Hallo {Name},
+{Absender} hier von KlarGlas. [Ich war|Wir waren] am {Tag} bei dir zum Fensterputzen.
+
+Bist du zufrieden mit dem Ergebnis? Falls etwas nicht passt, sag gern Bescheid, dann [komme ich|kommen wir] noch mal kurz vorbei.
+
+Ansonsten würden wir uns sehr über eine Google-Bewertung freuen: {Bewertungslink}
+
+Oder tritt gern unserem WhatsApp-Kanal bei, da gibt es ab und zu Rabatte und Aktionen, damit du nichts verpasst: {Kanallink}
+
+Viele Grüße
+{Absender}`;
+const einstellText = (feld, standard) => (daten.einstellungen?.[0]?.[feld] || "").trim() || standard;
+const absenderName = () => (PERSONEN.includes(ich) ? ich : "Louis & Lukas");
+
+// Nachricht nach dem Termin: Sie/Du vom Kunden, ich/wir vom Team, erledigte Absätze fallen weg
+function nachfassText(k, auftrag) {
+  const du = anredeVon(k) === "du";
+  const absender = absenderName();
+  const team = auftrag ? teamVon(auftrag) : [...PERSONEN];
+  const allein = PERSONEN.includes(ich) && team.length === 1 && team[0] === ich;
+  const d = auftrag ? auftragDatum(auftrag) : null;
+  const name = du ? String(k?.name || "").trim().split(/\s+/)[0] : String(k?.name || "").trim();
+  let absaetze = einstellText(du ? "text_du" : "text_sie", du ? STANDARD_TEXT_DU : STANDARD_TEXT_SIE).replace(/\r/g, "").split(/\n\s*\n/);
+  const bewertungRaus = !bewertungOffen(k);
+  if (bewertungRaus) absaetze = absaetze.filter((p) => !p.includes("{Bewertungslink}"));
+  if (!kanalOffen(k)) absaetze = absaetze.filter((p) => !p.includes("{Kanallink}"));
+  else if (bewertungRaus) absaetze = absaetze.map((p) => (p.includes("{Kanallink}") ? p.replace(/^Oder\s+(\S)/, (_, z) => z.toUpperCase()) : p));
+  return absaetze.join("\n\n")
+    .replace(/\[([^\]|]*)\|([^\]]*)\]/g, (_, eins, zwei) => (allein ? eins : zwei))
+    .replace(/\{Name\}/g, name || (du ? "" : "zusammen"))
+    .replace(/\{Absender\}/g, absender)
+    .replace(/\{Tag\}/g, d ? fmtWochentag.format(d) : "letzten Termin")
+    .replace(/\{Bewertungslink\}/g, einstellText("bewertung_link", STANDARD_BEWERTUNG_LINK))
+    .replace(/\{Kanallink\}/g, einstellText("kanal_link", STANDARD_KANAL_LINK))
+    .replace(/Hallo ,/, "Hallo,")
+    .trim();
+}
+
+// Was die Nachfass-Aufgabe noch klären soll (nur solange offen)
+// Sie | Du oben in der Kundenkarte
+function anredeSchalter(k, handy = false) {
+  const w = anredeVon(k);
+  const knopf = (wert, name) => `<button class="${handy ? "h-chip" : "chip"}" type="button" aria-pressed="${w === wert}" data-aktion="kunde-feld" data-id="${esc(k.id)}" data-feld="anrede" data-wert="${wert}">${name}</button>`;
+  return `<div class="${handy ? "h-chips h-anrede" : "chips anrede-schalter"}" role="group" aria-label="Anrede" data-feld-gruppe="anrede">${knopf("sie", "Sie")}${knopf("du", "Du")}</div>`;
+}
+
+// WhatsApp-Kanal + Google-Bewertung als Chips (Desktop)
+function kundeStatusChips(k) {
+  return `<div class="kunde-status">${Object.entries(KUNDE_FELDER).map(([feld, def]) => {
+    const wert = k[feld] || "nicht_gefragt";
+    const am = k[`${feld}_am`];
+    return `<div class="kunde-status__zeile">
+      <span class="kunde-status__titel"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[feld === "wa_kanal" ? "whatsapp" : "stern"]}</svg>${def.name}${am && wert !== "nicht_gefragt" ? ` <small class="leise">seit ${esc(fmtDatum.format(new Date(am)))}</small>` : ""}</span>
+      <div class="chips chips--wahl" data-feld-gruppe="${feld}">${def.liste.map(([w, n]) => `<button class="chip chip--status chip--${w}" type="button" aria-pressed="${wert === w}" data-aktion="kunde-feld" data-id="${esc(k.id)}" data-feld="${feld}" data-wert="${w}">${esc(n)}</button>`).join("")}</div>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+// Kleine Marken in Kundenlisten: grünes WhatsApp, wenn im Kanal; Stern, wenn bewertet
+const kundeMarken = (k) => `${kanalWert(k) === "drin" ? `<span class="kunde-marke kunde-marke--wa" title="Im WhatsApp-Kanal"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.whatsapp}</svg></span>` : ""}${bewertungWert(k) === "bewertet" ? `<span class="kunde-marke kunde-marke--stern" title="Hat bewertet"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.stern}</svg></span>` : ""}`;
+
+function nachfassZusatz(a) {
+  const k = kundeVon(a.kunde_id);
+  if (!k) return "";
+  return [kanalOffen(k) ? "Kanal?" : "", bewertungOffen(k) ? "Bewertung?" : ""].filter(Boolean).join(" · ");
+}
+const nachfassAuftrag = (a) => daten.auftraege.find((x) => x.id === a.nachfass_auftrag_id) || null;
+
+// Nach dem ersten Geld bei einem echten Auftrag: in 2 Tagen melden, täglicher Push ab morgen
+async function nachfassAnlegen(kundeId, auftrag) {
+  if (!kundeId || !auftrag?.id || istTermin(auftrag)) return;
+  if (daten.aufgaben.some((x) => x.nachfass_auftrag_id === auftrag.id)) return;
+  const k = kundeVon(kundeId);
+  if (!k) return;
+  const morgen = isoAusDatum(tagPlus(new Date(), 1));
+  await neu("aufgaben", {
+    titel: `Bei ${k.name} melden: Wie war's?`,
+    zustaendig: "Beide",
+    faellig: isoAusDatum(tagPlus(new Date(), 2)),
+    kunde_id: kundeId,
+    erledigt: false,
+    prioritaet: "normal",
+    taeglich: true,
+    push_ab: morgen,
+    nachfass_auftrag_id: auftrag.id,
+  });
+}
 
 // <input type="datetime-local"> ↔ ISO-Zeit
 function lokalZuIso(wert) {
@@ -238,7 +422,7 @@ async function speichern(aktion, t, ...rest) {
     await laden(t);
     for (const kid of kundenIds) await statusAbgleichen(kid);
     if (aktion === "remove" && t === "kunden") await Promise.all(["auftraege", "notizen", "aufgaben", "auszahlungen"].map(laden));
-    if (aktion === "remove" && t === "auftraege") await laden("auszahlungen");
+    if (aktion === "remove" && t === "auftraege") await Promise.all(["auszahlungen", "aufgaben"].map(laden));
     return ergebnis;
   } catch (fehler) {
     zeigeToast(`Speichern hat nicht geklappt: ${fehler.message}`);
@@ -715,6 +899,10 @@ const statusMarke = (id) => `<span class="status status--${esc(id)}">${esc(STATU
 
 // Icons wie in der Navigation; für Kartenköpfe und Bewegungen
 const ICONS = {
+  flagge: '<path d="M5.5 21V4M5.5 4.5h12l-2.5 4 2.5 4h-12"/>',
+  whatsapp: '<path d="M4 20.5l1.4-4.1A8.5 8.5 0 1 1 8.6 19z"/><path d="M9.2 8.6c-.3 2.9 2.7 6.2 6 6l.9-1.5-2-1.1-1 .9a4.2 4.2 0 0 1-2.2-2.2l.9-1-1.1-2z"/>',
+  stern: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z"/>',
+  kontaktNeu: '<circle cx="10" cy="8" r="3.5"/><path d="M3.5 20c.6-3.6 3.3-6 6.5-6 1.5 0 2.9.5 4 1.3M18 14v6M15 17h6"/>',
   termin: '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
   aufgabe: '<path d="M4 6.5l2 2 3.5-4M4 16.5l2 2 3.5-4M13 7h7M13 17h7"/>',
   kunden: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-6 6.5-6s5.9 2.4 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .7 3.2 2.9 3.5 6"/>',
@@ -854,18 +1042,27 @@ function eintragenZeile(a) {
 function aufgabeZeile(a) {
   const k = a.kunde_id ? kundeVon(a.kunde_id) : null;
   const ueberfaellig = a.faellig && !a.erledigt && a.faellig < heuteIso();
+  const zusatz = !a.erledigt && istNachfass(a) ? nachfassZusatz(a) : "";
   const unter = [
-    k ? `<a class="aufgabe__kunde" href="#kunde/${esc(k.id)}">${esc(k.name)}</a>` : "",
+    k ? `<a class="aufgabe__kunde" href="#kunde/${esc(k.id)}">${esc(k.name)}</a>${istNachfass(a) ? ` ${anredeMarke(k)}` : ""}` : "",
     a.faellig ? `${ueberfaellig ? '<span class="minus">überfällig · </span>' : ""}${esc(fmtTag.format(new Date(`${a.faellig}T12:00`)))}${esc(aufgabeZeitText(a))}` : "",
+    zusatz ? `<span class="aufgabe__zusatz">${esc(zusatz)}</span>` : "",
   ].filter(Boolean).join(" · ");
-  return `<li class="aufgabe${a.erledigt ? " erledigt" : ""}">
+  const nachfassKnoepfe = !a.erledigt && istNachfass(a) && k && waNummer(k.telefon)
+    ? `<span class="aufgabe__knoepfe">
+        <a class="knopf knopf--klein knopf--wa" href="${esc(waLink(k, nachfassText(k, nachfassAuftrag(a))))}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.whatsapp}</svg>WhatsApp schreiben</a>
+        <button class="knopf knopf--klein knopf--leise" type="button" data-aktion="kontakt-speichern" data-id="${esc(k.id)}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.kontaktNeu}</svg>Kontakt speichern</button>
+      </span>` : "";
+  return `<li class="aufgabe aufgabe--${esc(a.prioritaet || "normal")}${a.erledigt ? " erledigt" : ""}">
     <button class="haken" type="button" role="checkbox" aria-checked="${a.erledigt}" aria-label="${esc(a.titel)} erledigt" data-aktion="aufgabe-haken" data-id="${esc(a.id)}">
       <svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" /></svg>
     </button>
     <span class="zeile__haupt">
       <button class="zeile__titel" type="button" data-aktion="aufgabe-bearbeiten" data-id="${esc(a.id)}" style="all:unset;cursor:pointer;font-weight:650">${esc(a.titel)}</button>
       ${unter ? `<span class="zeile__unter">${unter}</span>` : ""}
+      ${nachfassKnoepfe}
     </span>
+    ${a.erledigt ? "" : `<button class="flagge" type="button" aria-pressed="${istWichtig(a)}" aria-label="${istWichtig(a) ? "Nicht mehr wichtig" : "Als wichtig markieren"}" title="${istWichtig(a) ? "Wichtig – nochmal tippen zum Entfernen" : "Als wichtig markieren"}" data-aktion="aufgabe-wichtig" data-id="${esc(a.id)}"><svg viewBox="0 0 24 24">${ICONS.flagge}</svg></button>`}
     ${personMarke(a.zustaendig)}
     ${a.erledigt ? "" : outpostKnopf(a)}
   </li>`;
@@ -1031,7 +1228,7 @@ function ansichtUebersicht() {
   const geplant = geplanteTermine();
   const handy = istHandy();
   const termine = kommendeTermine().slice(0, handy ? 5 : 4);
-  const aufgaben = sichtbareAufgaben().filter((a) => !a.erledigt).sort(nachFaelligkeit).slice(0, 5);
+  const aufgaben = sichtbareAufgaben().filter((a) => !a.erledigt && !istWichtig(a)).sort(nachFaelligkeit).slice(0, 5);
   const zaehlung = STATUS.map((s) => ({ ...s, anzahl: daten.kunden.filter((k) => k.status === s.id).length }));
   const gesamt = daten.kunden.length;
   const tgQuote = trinkgeldQuote(bezahltImZeitraum(monat.von, monat.bis));
@@ -1048,6 +1245,8 @@ function ansichtUebersicht() {
         <button class="knopf knopf--voll" type="button" data-aktion="auftrag-neu">Auftrag anlegen</button>
       </div>
     </div>
+
+    ${wichtigStreifen()}
 
     ${handy ? `<div class="knopfreihe knopfreihe--gross">
       <button class="knopf knopf--gross" type="button" data-aktion="kunde-neu">+ Kunde</button>
@@ -1198,7 +1397,19 @@ function kanalAuswertung() {
   </section>`;
 }
 
+// Roter Streifen ganz oben in der Übersicht: alle offenen wichtigen Aufgaben, direkt abhakbar
+function wichtigStreifen() {
+  const liste = wichtigeAufgaben();
+  if (!liste.length) return "";
+  return `<section class="karte karte--wichtig" aria-labelledby="t-wichtig">
+    <div class="karte__kopf"><h2 class="karte__titel" id="t-wichtig"><span class="badge badge--rot" aria-hidden="true"><svg viewBox="0 0 24 24">${ICONS.flagge}</svg></span><span>Wichtig</span></h2><span class="leise">${liste.length} offen</span></div>
+    <ul class="liste">${liste.map(aufgabeZeile).join("")}</ul>
+  </section>`;
+}
+
 function nachFaelligkeit(a, b) {
+  const p = prioRang(a) - prioRang(b);
+  if (p) return p;
   const x = `${a.faellig || "9999"} ${a.uhrzeit || "99"}`;
   const y = `${b.faellig || "9999"} ${b.uhrzeit || "99"}`;
   return x < y ? -1 : x > y ? 1 : 0;
@@ -1208,10 +1419,12 @@ function nachFaelligkeit(a, b) {
 function aufgabenAbschnitte(liste) {
   const heute = heuteIso();
   const bald = isoAusDatum(tagPlus(new Date(), 7));
+  const rest = liste.filter((a) => !istWichtig(a) || a.erledigt);
   return [
-    ["Heute fällig", liste.filter((a) => a.faellig && a.faellig <= heute)],
-    ["Bald", liste.filter((a) => a.faellig && a.faellig > heute && a.faellig <= bald)],
-    ["Später", liste.filter((a) => !a.faellig || a.faellig > bald)],
+    ["Wichtig", liste.filter((a) => istWichtig(a) && !a.erledigt)],
+    ["Heute fällig", rest.filter((a) => a.faellig && a.faellig <= heute)],
+    ["Bald", rest.filter((a) => a.faellig && a.faellig > heute && a.faellig <= bald)],
+    ["Später", rest.filter((a) => !a.faellig || a.faellig > bald)],
   ].filter(([, l]) => l.length);
 }
 const aufgabeZeitText = (a) => `${a.uhrzeit ? ` · ${a.uhrzeit.slice(0, 5)} Uhr` : ""}${a.push ? ` · 🔔${a.vorlauf_min ? ` ${vorlaufText(a.vorlauf_min)}` : ""}` : ""}`;
@@ -1272,7 +1485,7 @@ function ansichtAuftraegeListe() {
         return `<li><button class="zeile zeile--knopf" type="button" data-aktion="termin-karte" data-id="${esc(a.id)}">
           ${datumMarke(d.toISOString())}
           <span class="zeile__haupt">
-            <span class="zeile__titel">${kanalMarke(a.kanal)}${esc(auftragName(a))}</span>
+            <span class="zeile__titel">${kanalMarke(a.kanal)}${esc(auftragName(a))} ${anredeMarke(k)}</span>
             <span class="zeile__unter">${esc(fmtDatum.format(d))} · ${esc(a.leistung || "")}${a.team?.length ? ` · ${esc(teamVon(a).join(", "))}` : ""}${k?.adresse ? ` · ${esc(k.adresse)}` : ""}</span>
           </span>
           <span class="zeile__rechts${zahl(a.bekommen) === null ? " minus" : ""}">${auftragBetragText(a)}</span>
@@ -1294,7 +1507,7 @@ function ansichtKunden() {
     const erledigt = auftraegeVon(k.id).filter((a) => zahl(a.bekommen) !== null);
     const tgQuote = trinkgeldQuote(erledigt);
     return `<a class="kanban__karte" href="#kunde/${esc(k.id)}" draggable="true" data-kunde="${esc(k.id)}">
-      <b>${esc(k.name)}</b>
+      <b>${esc(k.name)}${kundeMarken(k)}</b>
       <span>${t ? `${esc(fmtTag.format(new Date(t.datum)))}, ${esc(fmtUhr.format(new Date(t.datum)))}` : esc(k.adresse || k.telefon || "–")}</span>
       ${tgQuote !== null ? `<small style="opacity:0.6;font-size:0.7rem">Ø ${tgQuote} % TG</small>` : ""}
     </a>`;
@@ -1323,7 +1536,7 @@ function ansichtKunden() {
           const tgQuote = trinkgeldQuote(erledigt);
           return `<li><a class="zeile" href="#kunde/${esc(k.id)}">
             <span class="zeile__haupt">
-              <span class="zeile__titel">${esc(k.name)}</span>
+              <span class="zeile__titel">${esc(k.name)}${kundeMarken(k)}</span>
               <span class="zeile__unter">${t ? `Termin ${esc(fmtTag.format(new Date(t.datum)))} · ` : ""}${esc(k.adresse || k.telefon || "")}${tgQuote !== null ? ` · Ø ${tgQuote} % TG` : ""}</span>
             </span>
             ${istHandy() ? `<span class="statuspunkt" style="--farbe:${STATUS.find((s) => s.id === k.status)?.farbe || "#B5B9C3"}" role="img" title="${esc(STATUS_NAME[k.status] || "")}" aria-label="${esc(STATUS_NAME[k.status] || "")}"></span>` : statusMarke(k.status)}
@@ -1439,6 +1652,7 @@ function ansichtKunde(id) {
             ${STATUS.map((s) => `<option value="${s.id}"${s.id === k.status ? " selected" : ""}>${esc(s.name)}</option>`).join("")}
           </select>
         </label>
+        ${anredeSchalter(k)}
         <button class="knopf" type="button" data-aktion="kunde-bearbeiten" data-id="${esc(k.id)}">Bearbeiten</button>
       </div>
     </div>
@@ -1454,12 +1668,17 @@ function ansichtKunde(id) {
         <div class="kontakt">
           ${k.telefon ? `<a href="tel:${esc(tel)}"><svg viewBox="0 0 24 24"><path d="M6.5 3h3l1.5 4-2 1.5a12 12 0 0 0 6.5 6.5L17 13l4 1.5v3a2.5 2.5 0 0 1-2.7 2.5C10.9 19.5 4.5 13.1 4 5.7A2.5 2.5 0 0 1 6.5 3Z"/></svg>${esc(k.telefon)}</a>` : ""}
           ${k.email ? `<a href="mailto:${esc(k.email)}"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 8 8 5 8-5"/></svg>${esc(k.email)}</a>` : ""}
-          ${k.adresse ? `<a href="https://maps.apple.com/?q=${encodeURIComponent(`${k.adresse}, Berlin`)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg>${esc(k.adresse)}</a>` : ""}
+          ${k.adresse ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${k.adresse}, Berlin`)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg>${esc(k.adresse)}</a>` : ""}
           ${k.nebenan_link ? `<a href="${esc(nebenanUrl(k.nebenan_link))}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24">${ICONS.haus}</svg>Auf nebenan.de schreiben</a>` : ""}
           ${!k.telefon && !k.email && !k.adresse && !k.nebenan_link ? `<p class="leise">Noch keine Kontaktdaten.</p>` : ""}
         </div>
         ${kam ? `<p class="kam-ueber">Kam über: <b>${esc(kanalName(kam))}</b></p>` : ""}
         ${werbungText(k) ? `<p class="kam-ueber">Werbung: <b>${esc(werbungText(k))}</b></p>` : ""}
+        ${waNummer(k.telefon) ? `<div class="knopfreihe kontakt-knoepfe">
+          <a class="knopf knopf--klein knopf--wa" href="${esc(waLink(k))}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.whatsapp}</svg>WhatsApp schreiben</a>
+          <button class="knopf knopf--klein knopf--leise" type="button" data-aktion="kontakt-speichern" data-id="${esc(k.id)}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.kontaktNeu}</svg>Kontakt speichern</button>
+        </div>` : ""}
+        ${kundeStatusChips(k)}
       </section>
 
       <section class="karte" aria-labelledby="t-zahlen">
@@ -1524,7 +1743,7 @@ function terminListeHandy(termine) {
             <span class="zeile__unter">${esc(fmtTag.format(d))}, ${esc(fmtUhr.format(d))} Uhr${istTermin(a) ? "" : ` · ${esc(a.leistung)}`}</span>
           </span>
         </button>
-        ${k?.adresse ? `<a class="kal-adresse" href="https://maps.apple.com/?q=${encodeURIComponent(`${k.adresse}, Berlin`)}" target="_blank" rel="noopener">${esc(k.adresse)} ↗</a>` : ""}
+        ${k?.adresse ? `<a class="kal-adresse" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${k.adresse}, Berlin`)}" target="_blank" rel="noopener">${esc(k.adresse)} ↗</a>` : ""}
       </li>`;
     }).join("")}</ul>` : `<p class="leer">Keine Termine eingetragen.</p>`}
   </section>`;
@@ -1978,7 +2197,7 @@ function ansichtAufgaben() {
     </div>
     ${!liste.length ? `<section class="karte"><p class="leer">${f === "erledigt" ? "Noch nichts erledigt." : "Nichts offen. Stark."}</p></section>`
       : f === "erledigt" ? `<section class="karte"><ul class="liste">${liste.map(aufgabeZeile).join("")}</ul></section>`
-      : aufgabenAbschnitte(liste).map(([titel, l]) => `<section class="karte aufgaben-abschnitt"><h2 class="aufgaben-abschnitt__titel">${titel} <span class="leise">${l.length}</span></h2><ul class="liste">${l.map(aufgabeZeile).join("")}</ul></section>`).join("")}
+      : aufgabenAbschnitte(liste).map(([titel, l]) => `<section class="karte aufgaben-abschnitt${titel === "Wichtig" ? " aufgaben-abschnitt--wichtig" : ""}"><h2 class="aufgaben-abschnitt__titel">${titel} <span class="leise">${l.length}</span></h2><ul class="liste">${l.map(aufgabeZeile).join("")}</ul></section>`).join("")}
     ${istIos ? `<p class="hinweis">„In OutPost“ legt die Aufgabe in deiner Erinnerungen-Liste „Klar Glas“ an.</p>` : ""}`;
 }
 
@@ -2085,6 +2304,37 @@ function ansichtMitarbeiter(roh) {
     </div>`;
 }
 
+// v26: Links + Texte für die Nachricht nach dem Termin
+function nachfassEinstellungen(handy = false) {
+  const e = daten.einstellungen?.[0] || {};
+  const link = (feld, titel, standard) => `<label class="feld"><span>${titel}</span><input class="eingabe" type="url" inputmode="url" value="${esc(e[feld] || standard)}" data-einstell="true" data-einstell-text="true" data-einstell-field="${feld}" /></label>`;
+  const text = (feld, titel, standard) => `<label class="feld"><span>${titel}</span><textarea class="eingabe nachfass-text" rows="${handy ? 12 : 11}" data-einstell="true" data-einstell-text="true" data-einstell-field="${feld}">${esc(e[feld] || standard)}</textarea></label>`;
+  const hilfe = "Platzhalter: {Name}, {Absender}, {Tag}, {Bewertungslink}, {Kanallink} und [allein|zu zweit], z. B. [Ich war|Wir waren]. Absätze mit Bewertung/Kanal fallen weg, wenn das schon erledigt ist.";
+  if (handy) return `
+    <section class="h-abschnitt">
+      <div class="h-abschnitt__kopf"><h2>Nachricht nach dem Termin</h2></div>
+      <div class="h-gruppe h-gruppe--innen h-nachfass-einstell">
+        ${link("bewertung_link", "Google-Bewertung", STANDARD_BEWERTUNG_LINK)}
+        ${link("kanal_link", "WhatsApp-Kanal", STANDARD_KANAL_LINK)}
+        ${text("text_sie", "Text „Sie“", STANDARD_TEXT_SIE)}
+        ${text("text_du", "Text „Du“", STANDARD_TEXT_DU)}
+      </div>
+      <p class="h-fuss">${esc(hilfe)}</p>
+    </section>`;
+  return `<section class="karte">
+    ${kartenTitel("t-nachfass", "gruen", "whatsapp", "Nachricht nach dem Termin")}
+    <div class="feldreihe">
+      ${link("bewertung_link", "Link Google-Bewertung", STANDARD_BEWERTUNG_LINK)}
+      ${link("kanal_link", "Link WhatsApp-Kanal", STANDARD_KANAL_LINK)}
+    </div>
+    <div class="raster raster--zwei nachfass-texte">
+      ${text("text_sie", "Text „Sie“", STANDARD_TEXT_SIE)}
+      ${text("text_du", "Text „Du“", STANDARD_TEXT_DU)}
+    </div>
+    <p class="hinweis">${esc(hilfe)}</p>
+  </section>`;
+}
+
 function ansichtEinstellungen() {
   const p = preise();
   const feld = (name, titel, schritt, hinweis = "") => `<label class="feld"><span>${titel}</span>
@@ -2107,6 +2357,7 @@ function ansichtEinstellungen() {
       </section>
     </div>
     ${teamKarte()}
+    ${nachfassEinstellungen()}
     <section class="karte">
       <div class="karte__kopf">${kartenTitel("t-kanaele", "himmel", "web", "Woher Kunden kommen")}<button class="knopf knopf--klein knopf--voll" type="button" data-aktion="kanal-neu">Kontaktweg hinzufügen</button></div>
       <ul class="kanal-liste">${kanaeleWaehlbar().map(([kid, k]) => `<li>${kanalMarke(kid)}<span>${esc(k.name)}</span>${k.eigen ? `<button class="knopf knopf--klein knopf--leise" type="button" data-aktion="kanal-weg" data-id="${esc(kid)}">Entfernen</button>` : `<small class="leise">fest</small>`}</li>`).join("")}</ul>
@@ -2383,9 +2634,25 @@ window.addEventListener("hashchange", () => {
 });
 
 let toastZeit = 0;
-function zeigeToast(text, dauer = 2600) {
+// knopf: { text, href } oder { text, klick } – z. B. „Bestätigung schicken“, darf ignoriert werden
+function zeigeToast(text, dauer = 2600, knopf = null) {
   const t = $("[data-toast]");
   t.textContent = text;
+  t.classList.toggle("toast--knopf", Boolean(knopf));
+  if (knopf) {
+    const b = document.createElement(knopf.href ? "a" : "button");
+    b.className = "toast__knopf";
+    b.textContent = knopf.text;
+    if (knopf.href) {
+      b.href = knopf.href;
+      if (/^https?:/.test(knopf.href)) { b.target = "_blank"; b.rel = "noopener"; }
+    } else b.type = "button";
+    b.addEventListener("click", (e) => {
+      if (knopf.klick) { e.preventDefault(); knopf.klick(); }
+      t.classList.remove("ist-da");
+    });
+    t.append(" ", b);
+  }
   t.classList.add("ist-da");
   clearTimeout(toastZeit);
   toastZeit = setTimeout(() => t.classList.remove("ist-da"), dauer);
@@ -2680,11 +2947,11 @@ function dialogAuftrag(a = {}, kundeId = null) {
       let gespeichert;
       if (a.id) {
         gespeichert = await aendern("auftraege", a.id, zeile);
-        if (zahl(a.bekommen) === null && zeile.bekommen !== null) await nachBezahlung(zeile.kunde_id, zeile);
+        if (zahl(a.bekommen) === null && zeile.bekommen !== null) await nachBezahlung(zeile.kunde_id, { ...zeile, id: a.id });
         else if (zeile.datum && (!gleicheZeit(zeile.datum, a.datum) || zeile.vorlaeufig !== Boolean(a.vorlaeufig))) await statusNachTermin(zeile.kunde_id, zeile);
       } else {
         gespeichert = await neu("auftraege", zeile);
-        if (zeile.bekommen !== null) await nachBezahlung(zeile.kunde_id, zeile);
+        if (zeile.bekommen !== null) await nachBezahlung(zeile.kunde_id, { ...zeile, id: gespeichert?.id });
         else await statusNachTermin(zeile.kunde_id, zeile);
       }
       const id = gespeichert?.id || a.id;
@@ -2911,6 +3178,8 @@ async function nachBezahlung(kundeId, auftrag) {
   if (!k) return;
   // Erledigt / ab STAMM_AB bezahlten Besuchen Stammkunde
   await statusAbgleichen(kundeId);
+  // v26: In 2 Tagen nachfragen, wie es war
+  try { await nachfassAnlegen(kundeId, auftrag); } catch (e) { console.error("Nachfass", e); }
 }
 
 function dialogAusgabe(x = {}) {
@@ -2976,6 +3245,9 @@ function dialogAufgabe(a = {}) {
     titel: a.id ? "Aufgabe bearbeiten" : "Neue Aufgabe",
     felder: `
       <label class="feld"><span>Was ist zu tun?</span><input name="titel" required value="${esc(a.titel)}" placeholder="Zum Beispiel: Am Mittwoch bei Familie X melden" /></label>
+      <div class="feld" data-prio-feld><span>Wie wichtig?</span>
+        <div class="segment segment--preisart segment--prio" role="radiogroup" aria-label="Wichtigkeit">${PRIO_LISTE.map((p) => `<label class="segment__knopf segment__knopf--${p.id}"><input type="radio" name="prioritaet" value="${p.id}"${(a.prioritaet || "normal") === p.id ? " checked" : ""} />${esc(p.name)}</label>`).join("")}</div>
+      </div>
       <div class="feldreihe">
         <label class="feld"><span>Wer</span><select name="zustaendig">${optionen(["Beide", ...PERSONEN], a.zustaendig || "Beide")}</select></label>
         <label class="feld"><span>Wann</span><input name="faellig" type="date" value="${esc(a.faellig || "")}" /></label>
@@ -3006,7 +3278,10 @@ function dialogAufgabe(a = {}) {
         push,
         vorlauf_min: Number(f.vorlauf_min) || 0,
         kunde_id: f.kunde_id || null,
+        prioritaet: PRIO_LISTE.some((p) => p.id === f.prioritaet) ? f.prioritaet : "normal",
       };
+      // Neu wichtig → täglicher Push ab heute 16 Uhr (oder ab morgen, wenn die Zeit schon vorbei ist)
+      if (zeile.prioritaet === "wichtig" && (!istWichtig(a) || zeile.uhrzeit !== (a.uhrzeit || "").slice(0, 5))) zeile.push_tag = tagesPushStart(zeile.uhrzeit);
       // Zeit geändert → Erinnerung darf noch einmal kommen
       if (!a.id || zeile.faellig !== a.faellig || zeile.uhrzeit !== (a.uhrzeit || "").slice(0, 5) || zeile.vorlauf_min !== (a.vorlauf_min ?? 0) || zeile.zustaendig !== a.zustaendig) zeile.push_gesendet = null;
       if (a.id) await aendern("aufgaben", a.id, zeile);
@@ -3149,7 +3424,7 @@ function terminkarteInhalt(a, { erfolg = false } = {}) {
   const bezahlt = phase === 3;
   const geschaetzt = zahl(a.geschaetzt);
   const adresse = k?.adresse ? `${k.adresse}, Berlin` : "";
-  const karte = `${istIos ? "https://maps.apple.com/?q=" : "https://www.google.com/maps/search/?api=1&query="}${encodeURIComponent(adresse)}`;
+  const karte = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}`;
   const tel = (k?.telefon || "").replace(/[^\d+]/g, "");
   const notiz = daten.notizen
     .filter((n) => n.kunde_id === a.kunde_id)
@@ -3183,7 +3458,7 @@ function terminkarteInhalt(a, { erfolg = false } = {}) {
     ? `<div class="tb-person">
         <a class="tb-person__name" href="#kunde/${esc(k.id)}" data-tk-kunde>
           <span class="tb-person__ava" aria-hidden="true">${esc(tkInitialen(k.name))}</span>
-          <span class="tb-person__text"><h2 id="tk-titel">${esc(k.name)}${tbSvg(TB_ICON.pfeil)}</h2><small>${esc(meta)}</small></span>
+          <span class="tb-person__text"><h2 id="tk-titel">${esc(k.name)}${tbSvg(TB_ICON.pfeil)}</h2><small>${anredeMarke(k)} ${esc(meta)}</small></span>
         </a>
         <div class="tb-person__kontakt">${kontakt(!!tel, `tel:${tel}`, "blau", ICONS.kontakt, "Anrufen")}${kontakt(!!k.email, `mailto:${k.email || ""}`, "lila", ICONS.mail, "Mail schreiben")}</div>
       </div>`
@@ -3572,6 +3847,71 @@ function kundenMail(k, art, a) {
   };
 }
 
+// v26: Datumsfeld im gerade geöffneten Auftrags-/Termin-Fenster fokussieren und Kalender aufklappen
+function datumFokussieren() {
+  requestAnimationFrame(() => {
+    const feld = dialogForm.querySelector('[name="datum"]');
+    if (!feld) return;
+    const karte = feld.closest(".hf-karte") || feld.closest(".feld") || feld;
+    karte.scrollIntoView({ block: "center", behavior: "smooth" });
+    karte.classList.add("feld--hervor");
+    setTimeout(() => karte.classList.remove("feld--hervor"), 1600);
+    if (!istHandy()) feld.focus({ preventScroll: true });
+    try { feld.showPicker?.(); } catch {}
+  });
+}
+
+// Zeile gleitet raus, die nächste rückt nach
+function zeileWegschieben(zeile) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return Promise.resolve();
+  return new Promise((fertig) => {
+    const h = zeile.getBoundingClientRect().height;
+    zeile.style.height = `${h}px`;
+    zeile.style.overflow = "hidden";
+    zeile.classList.add("zeile--weg");
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      zeile.style.transform = "translateX(32px)";
+      zeile.style.opacity = "0";
+      setTimeout(() => {
+        zeile.style.height = "0px";
+        zeile.style.marginTop = zeile.style.marginBottom = "0px";
+        zeile.style.paddingTop = zeile.style.paddingBottom = "0px";
+      }, 140);
+      setTimeout(fertig, 420);
+    }));
+  });
+}
+
+// Bestätigung an den Kunden: WhatsApp, sonst Mail
+function bestaetigungLink(k, a) {
+  const m = kundenMail(k, "bestaetigt", a);
+  if (waNummer(k.telefon)) return waLink(k, m.text);
+  if (k.email) return `mailto:${k.email}?subject=${encodeURIComponent(m.betreff)}&body=${encodeURIComponent(m.text)}`;
+  return "";
+}
+
+// Nachfass abhaken: kleines Fenster mit Kanal + Bewertung, dann „Erledigt“
+function nachfassAbhaken(a) {
+  const k = kundeVon(a.kunde_id);
+  const handy = istHandy();
+  const gruppe = (feld, wert) => {
+    const def = KUNDE_FELDER[feld];
+    return `<div class="feld nachfass-feld"><span>${def.name}</span>
+      <div class="${handy ? "h-chips h-chips--wahl" : "chips chips--wahl"}" data-feld-gruppe="${feld}">${def.liste.map(([w, n]) => `<button class="${handy ? "h-chip" : "chip"}" type="button" aria-pressed="${wert === w}" data-aktion="kunde-feld" data-id="${esc(k.id)}" data-feld="${feld}" data-wert="${w}">${esc(n)}</button>`).join("")}</div>
+    </div>`;
+  };
+  oeffneDialog({
+    titel: `${k.name}: Wie war's?`,
+    knopf: "Erledigt",
+    felder: `<p class="leise" style="margin:0">Kurz festhalten, was rausgekommen ist.</p>
+      <div class="nachfass-fenster">${gruppe("wa_kanal", kanalWert(k))}${gruppe("bewertung", bewertungWert(k))}</div>`,
+    absenden: async () => {
+      await aendern("aufgaben", a.id, { erledigt: true });
+      zeigeToast("Erledigt");
+    },
+  });
+}
+
 // v23: Es öffnet sich kein Mailprogramm mehr, nur die kurze Meldung (Name bleibt, damit die Aufrufe gleich bleiben)
 function mailOeffnen(k, art, a, erledigt) {
   zeigeToast(erledigt);
@@ -3702,8 +4042,29 @@ document.addEventListener("click", async (event) => {
     }
     case "aufgabe-haken": {
       const a = finden("aufgaben");
+      // Nachfass: erst kurz Kanal und Bewertung festhalten, dann abhaken
+      if (!a.erledigt && istNachfass(a) && kundeVon(a.kunde_id)) return nachfassAbhaken(a);
       await aendern("aufgaben", id, { erledigt: !a.erledigt });
       zeigeToast(a.erledigt ? "Wieder offen" : "Erledigt");
+      return render();
+    }
+    case "aufgabe-wichtig": {
+      const a = finden("aufgaben");
+      const wichtig = !istWichtig(a);
+      await aendern("aufgaben", id, { prioritaet: wichtig ? "wichtig" : "normal", ...(wichtig ? { push_tag: tagesPushStart(a.uhrzeit) } : {}) });
+      if (typeof hVibe === "function") hVibe(8);
+      zeigeToast(wichtig ? "Als wichtig markiert" : "Nicht mehr wichtig");
+      return render();
+    }
+    case "kontakt-speichern":
+      return kontaktSpeichern(kundeVon(id));
+    case "kunde-feld": {
+      await kundeFeldSetzen(id, el.dataset.feld, el.dataset.wert);
+      // Im Nachfass-Fenster nur die Chips umschalten, nicht neu zeichnen
+      const gruppe = el.closest("[data-feld-gruppe]");
+      if (gruppe) gruppe.querySelectorAll("[data-wert]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.wert === el.dataset.wert));
+      if (dialog.open) { wartetAufRender = true; return; }
+      if (terminkarte.open) terminkarteZeichnen();
       return render();
     }
     case "aufgabe-kopieren": {
@@ -3747,31 +4108,32 @@ document.addEventListener("click", async (event) => {
       return render();
     }
     case "datum-festlegen": {
+      // Direkt das normale Bearbeiten-Fenster, Datum schon im Fokus
       const a = finden("auftraege");
-      oeffneDialog({
-        titel: "Datum festlegen",
-        felder: `<p class="leise" style="margin:0">${esc(auftragName(a))}${a.leistung ? ` · ${esc(a.leistung)}` : ""}</p>
-          <label class="feld"><span>Wann</span><input type="datetime-local" name="datum" required /></label>
-          ${vorlaeufigSchalter({ vorlaeufig: false })}`,
-        absenden: async (f) => {
-          const zeile = { datum: lokalZuIso(f.datum), vorlaeufig: Boolean(f.vorlaeufig) };
-          await aendern("auftraege", id, zeile);
-          if (a.kunde_id) await statusNachTermin(a.kunde_id, { ...a, ...zeile });
-          await kalenderAbgleichen(id);
-        },
-      });
-      return;
+      if (istTermin(a)) dialogTermin(a);
+      else dialogAuftrag(a);
+      return datumFokussieren();
     }
     case "termin-fix": {
       const a = finden("auftraege");
-      if (!a.datum) return istTermin(a) ? dialogTermin(a) : dialogAuftrag(a);
+      if (!a.datum) {
+        if (istTermin(a)) dialogTermin(a);
+        else dialogAuftrag(a);
+        return datumFokussieren();
+      }
       const fest = { vorlaeufig: false, ...(a.termin_status === "angefragt" ? { termin_status: "bestaetigt" } : {}) };
+      const zeile = el.closest(".geplant-zeile, .h-geplant, .h-zeile, li");
+      const weg = zeile && !terminkarte.open ? zeileWegschieben(zeile) : Promise.resolve();
       await aendern("auftraege", id, fest);
       if (a.kunde_id) await statusNachTermin(a.kunde_id, { ...a, ...fest });
-      await kalenderAbgleichen(id);
+      kalenderAbgleichen(id);
+      await weg;
       if (terminkarte.open) terminkarteZeichnen();
-      mailOeffnen(kundeVon(a.kunde_id), "bestaetigt", a, "Termin steht fest");
-      return render();
+      render();
+      const k = kundeVon(a.kunde_id);
+      const best = k ? bestaetigungLink(k, { ...a, ...fest }) : "";
+      zeigeToast("Termin fest ✓", best ? 6000 : 2600, best ? { text: "Bestätigung schicken", href: best } : null);
+      return;
     }
     case "termin-ablehnen": {
       if (!confirm("Termin wirklich ablehnen?")) return;
@@ -3926,7 +4288,11 @@ inhalt.addEventListener("change", async (event) => {
     zeigeToast("Gespeichert");
   } else if (el.dataset.einstell && el.dataset.einstellField) {
     const field = el.dataset.einstellField;
-    await aendern("einstellungen", daten.einstellungen[0]?.id ?? 1, { [field]: Number(el.value) });
+    let wert = el.dataset.einstellText ? el.value.trim() || null : Number(el.value);
+    // Leerer Link → wieder der Standard-Link; leerer Text → Standard-Text
+    if (wert === null && field === "bewertung_link") wert = STANDARD_BEWERTUNG_LINK;
+    if (wert === null && field === "kanal_link") wert = STANDARD_KANAL_LINK;
+    await aendern("einstellungen", daten.einstellungen[0]?.id ?? 1, { [field]: wert });
     zeigeToast("Gespeichert");
   }
 });

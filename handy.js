@@ -104,7 +104,7 @@ const hTagText = (d) => {
 };
 
 const hTel = (k) => (k?.telefon || "").replace(/[^\d+]/g, "");
-const hKarteUrl = (adresse) => `${istIos ? "https://maps.apple.com/?q=" : "https://www.google.com/maps/search/?api=1&query="}${encodeURIComponent(`${adresse}, Berlin`)}`;
+const hKarteUrl = (adresse) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${adresse}, Berlin`)}`;
 
 const H_ICON = {
   tel: '<path d="M6.5 3h3l1.5 4-2 1.5a12 12 0 0 0 6.5 6.5L17 13l4 1.5v3a2.5 2.5 0 0 1-2.7 2.5C10.9 19.5 4.5 13.1 4 5.7A2.5 2.5 0 0 1 6.5 3Z"/>',
@@ -161,7 +161,8 @@ function hUebersicht() {
   const kassieren = nochEintragen();
   const geplant = geplanteTermine();
   const termine = kommendeTermine().slice(0, 5);
-  const aufgaben = sichtbareAufgaben().filter((a) => !a.erledigt).sort(nachFaelligkeit).slice(0, 5);
+  const aufgaben = sichtbareAufgaben().filter((a) => !a.erledigt && !istWichtig(a)).sort(nachFaelligkeit).slice(0, 5);
+  const wichtig = wichtigeAufgaben();
 
   const anfragenHtml = anfragen.map((a) => {
     const k = kundeVon(a.kunde_id);
@@ -212,10 +213,11 @@ function hUebersicht() {
   const termineHtml = termine.map(hTerminZeile).join("");
   const aufgabenHtml = aufgaben.map((a) => hAufgabeZeile(a)).join("");
 
-  const nichts = !anfragen.length && !kassieren.length && !geplant.length && !termine.length && !aufgaben.length;
+  const nichts = !wichtig.length && !anfragen.length && !kassieren.length && !geplant.length && !termine.length && !aufgaben.length;
 
   return `
     ${hKopf({ titel: `Hallo ${ich}`, ueber: esc(fmtTagLang.format(jetzt)) })}
+    ${hAbschnitt(wichtig.length ? `Wichtig <span class="h-zahl h-zahl--rot">${wichtig.length}</span>` : "", wichtig.map((a) => hAufgabeZeile(a)).join(""), { klasse: "h-abschnitt--wichtig", farbe: "#c81e1e", icon: ICONS.flagge })}
     ${zahlen}
     ${hAbschnitt(anfragen.length ? `Neue Anfragen <span class="h-zahl">${anfragen.length}</span>` : "", anfragenHtml, { klasse: "h-abschnitt--anfragen", farbe: "#5B3FD6", icon: H_ICON.post })}
     ${hAbschnitt(kassieren.length ? "Noch kassieren" : "", kassierenHtml, { farbe: "#F2B33D", icon: H_ICON.euro, fuss: kassieren.length ? "Antippen und eintragen, was ihr wirklich bekommen habt." : "" })}
@@ -248,14 +250,24 @@ function hAufgabeZeile(a, { wischen = false } = {}) {
     a.faellig ? `<span class="${ueberfaellig ? "h-minus" : ""}">${esc(hTagText(new Date(`${a.faellig}T12:00`)))}${esc(aufgabeZeitText(a))}</span>` : "",
   ].filter(Boolean).join(" · ");
   const art = { Louis: "louis", Lukas: "lukas" }[a.zustaendig] || "beide";
-  const vorne = `<div class="h-aufgabe${a.erledigt ? " ist-erledigt" : ""}">
+  const prio = PRIO_LISTE.some((p) => p.id === a.prioritaet) ? a.prioritaet : "normal";
+  const nf = istNachfass(a) && !a.erledigt && k;
+  const zusatz = nf ? nachfassZusatz(a) : "";
+  const wa = nf ? waLink(k, nachfassText(k, nachfassAuftrag(a))) : "";
+  const knoepfe = nf && waNummer(k.telefon) ? `<span class="h-aufgabe__knoepfe">
+      <a class="h-pill h-pill--klein h-pill--wa" href="${esc(wa)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.whatsapp}</svg>WhatsApp</a>
+      <button class="h-pill h-pill--klein" type="button" data-aktion="kontakt-speichern" data-id="${esc(k.id)}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.kontaktNeu}</svg>Kontakt</button>
+    </span>` : "";
+  const vorne = `<div class="h-aufgabe h-aufgabe--${prio}${a.erledigt ? " ist-erledigt" : ""}">
     <button class="h-haken h-haken--${art}" type="button" role="checkbox" aria-checked="${Boolean(a.erledigt)}" aria-label="${esc(a.titel)} erledigt" data-h="haken" data-id="${esc(a.id)}"><span></span></button>
     <button class="h-aufgabe__text" type="button" data-aktion="aufgabe-bearbeiten" data-id="${esc(a.id)}">
-      <span class="h-aufgabe__titel">${esc(a.titel)}</span>
+      <span class="h-aufgabe__titel">${nf ? `${anredeMarke(k)} ` : ""}${esc(a.titel)}</span>
       ${unter ? `<span class="h-zeile__unter">${unter}</span>` : ""}
+      ${zusatz ? `<span class="h-aufgabe__zusatz">${esc(zusatz)}</span>` : ""}
     </button>
+    ${a.erledigt ? "" : `<button class="h-flagge" type="button" aria-pressed="${prio === "wichtig"}" aria-label="Wichtig" data-aktion="aufgabe-wichtig" data-id="${esc(a.id)}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.flagge}</svg></button>`}
     <span class="h-person h-person--${art}">${esc(a.zustaendig || "Beide")}</span>
-  </div>`;
+  </div>${knoepfe}`;
   return wischen ? hWisch(vorne, hWischKnopf("rot", "Löschen", H_ICON.muell, { attr: `data-h="aufgabe-loeschen" data-id="${esc(a.id)}"` })) : vorne;
 }
 
@@ -273,7 +285,7 @@ function hAufgaben() {
     <div class="h-wer" role="group" aria-label="Aufgaben filtern">
       ${filter.map(([wert, name, kurz, farbe]) => `<button class="h-wer__kachel" type="button" style="--c:${farbe}" aria-pressed="${f === wert}" data-aktion="aufgaben-filter" data-wert="${wert}"><em aria-hidden="true">${kurz}</em><span>${name}</span><b>${zaehl(wert)}</b></button>`).join("")}
     </div>
-    ${aufgabenAbschnitte(offen).map(([titel, l]) => `<section class="h-abschnitt">
+    ${aufgabenAbschnitte(offen).map(([titel, l]) => `<section class="h-abschnitt${titel === "Wichtig" ? " h-abschnitt--wichtig" : ""}">
       <div class="h-abschnitt__kopf"><h2>${titel}</h2><span class="h-leise">${l.length}</span></div>
       <div class="h-gruppe h-gruppe--aufgaben">${l.map((a) => hAufgabeZeile(a, { wischen: true })).join("")}</div>
     </section>`).join("")}
@@ -352,7 +364,7 @@ function hKunden() {
     const vorne = hZeile({
       href: `#kunde/${k.id}`,
       links: hAvatarFarbe(k),
-      titel: esc(k.name),
+      titel: `${esc(k.name)}${kundeMarken(k)}`,
       unter: t ? `Termin ${esc(hTagText(new Date(t.datum)))}` : esc(k.adresse || k.telefon || ""),
       rechts: hStatus(k.status),
       inset: 62,
@@ -463,9 +475,14 @@ function hKunde(id) {
         <span class="visually-hidden" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)">Status</span>
         <select data-status-wahl="${esc(k.id)}">${STATUS.map((x) => `<option value="${x.id}"${x.id === k.status ? " selected" : ""}>${esc(x.name)}</option>`).join("")}</select>
       </label>
+      ${anredeSchalter(k, true)}
       ${schnell}
     </section>
     ${stats}
+    ${waNummer(k.telefon) ? `<div class="h-doppel h-kontakt-knoepfe">
+      <a class="h-pill h-pill--wa" href="${esc(waLink(k))}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.whatsapp}</svg>WhatsApp</a>
+      <button class="h-pill" type="button" data-aktion="kontakt-speichern" data-id="${esc(k.id)}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.kontaktNeu}</svg>Kontakt speichern</button>
+    </div>` : ""}
 
     <section class="h-abschnitt">
       <div class="h-abschnitt__kopf"><h2>Wie geht's weiter?</h2></div>
@@ -473,6 +490,18 @@ function hKunde(id) {
     </section>
 
     ${hAbschnitt("Kontakt", kontakt)}
+
+    <section class="h-abschnitt h-kunde-status">
+      <div class="h-abschnitt__kopf"><h2>Kanal und Bewertung</h2></div>
+      <div class="h-gruppe h-gruppe--innen">${Object.entries(KUNDE_FELDER).map(([feld, def]) => {
+        const w = k[feld] || "nicht_gefragt";
+        const am = k[`${feld}_am`];
+        return `<div class="h-kunde-status__feld">
+          <span class="h-kunde-status__titel"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[feld === "wa_kanal" ? "whatsapp" : "stern"]}</svg>${def.name}${am && w !== "nicht_gefragt" ? ` <small class="h-leise">seit ${esc(fmtDatum.format(new Date(am)))}</small>` : ""}</span>
+          <div class="h-chips h-chips--wahl" data-feld-gruppe="${feld}">${def.liste.map(([x, n]) => `<button class="h-chip h-chip--${x}" type="button" aria-pressed="${w === x}" data-aktion="kunde-feld" data-id="${esc(k.id)}" data-feld="${feld}" data-wert="${x}">${esc(n)}</button>`).join("")}</div>
+        </div>`;
+      }).join("")}</div>
+    </section>
 
     ${hAbschnitt("Auf einen Blick", blick)}
 
@@ -915,6 +944,7 @@ function hEinstellungen() {
       </div>
       <p class="h-fuss">Z. B. eine Flyer- oder Werbeaktion. Taucht dann bei „Kontakt über“ auf.</p>
     </section>
+    ${nachfassEinstellungen(true)}
     ${hAbschnitt("Termine", hZeile({ href: "#zeiten", titel: "Wann wir können", unter: "Öffnungszeiten, Dauer, Kalender, Blocker" }))}
     ${hAbschnitt("Mitteilungen", `<div class="h-zeile h-zeile--schalter">
         <span class="h-zeile__text"><span class="h-zeile__titel">Bei neuen Anfragen</span><span class="h-zeile__unter">${esc(pushText())}</span></span>
@@ -1471,6 +1501,7 @@ function hKlick(e) {
     case "haken": {
       const a = daten.aufgaben.find((x) => x.id === id);
       if (!a || el.dataset.laeuft) return;
+      if (istNachfass(a) && !a.erledigt && kundeVon(a.kunde_id)) return nachfassAbhaken(a);
       el.dataset.laeuft = "1";
       el.setAttribute("aria-checked", String(!a.erledigt));
       el.closest(".h-aufgabe")?.classList.toggle("ist-erledigt", !a.erledigt);
@@ -2029,12 +2060,19 @@ function hfAufgabe(form) {
   uhr.classList.add("hf-klein");
   const push = hfSchalter(form.querySelector("[data-push-zeile]"), "🔔 Push-Erinnerung", "Ohne Uhrzeit um 16 Uhr", "#6a4be0");
   const vorlauf = hfKacheln(form.querySelector("[name=vorlauf_min]"), VORLAUF.map(([w, t]) => ({ wert: String(w), name: t, farbe: "#6a4be0" })), { spalten: 2, klein: true });
+  // Wichtigkeit: Radios → verstecktes Select → Kacheln
+  const prioFeld = form.querySelector("[data-prio-feld]");
+  const prioAlt = form.querySelector("[name=prioritaet]:checked")?.value || "normal";
+  const prioSel = hfEl(`<select name="prioritaet">${PRIO_LISTE.map((p) => `<option value="${p.id}"${p.id === prioAlt ? " selected" : ""}>${esc(p.name)}</option>`).join("")}</select>`);
+  prioFeld.replaceChildren(prioSel);
+  const prio = hfKacheln(prioSel, PRIO_LISTE.map((p) => ({ wert: p.id, name: p.name, farbe: p.farbe, punkt: true })), { spalten: 3, klein: true, klasse: "hf-prio" });
   const vorlaufZeigen = () => (vorlauf.hidden = !form.elements.push.checked);
   form.addEventListener("change", vorlaufZeigen);
   vorlaufZeigen();
   return [
     hfKarte("", "", "", [titel]),
     hfKarte("Wer?", "person", "#e67c73", [wer]),
+    hfKarte("Wie wichtig?", "flagge", "#c81e1e", [prio]),
     hfKarte("Wann?", "uhr", "#d08a00", [...faellig, uhr]),
     hfKarte("Erinnerung", "uhr", "#6a4be0", [push, vorlauf]),
     hfKarte("Zu Kunde", "link", "#13a06b", [hfKunde(form.querySelector("[name=kunde_id]"), { optional: true })]),
