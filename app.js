@@ -86,8 +86,21 @@ const PRIO_LISTE = [
   { id: "normal", name: "Normal", farbe: "#2b5cff" },
   { id: "spaeter", name: "Später", farbe: "#8a93a6" },
 ];
-const prioRang = (a) => ({ wichtig: 0, normal: 1, spaeter: 2 })[a.prioritaet] ?? 1;
-const istWichtig = (a) => a.prioritaet === "wichtig";
+// v28: Wichtig-Flagge = a.prioritaet "wichtig". In „Wichtig“ rutscht die Aufgabe aber erst 2 Tage vor ihrem Datum
+// (ohne Datum sofort). Ab dann auch der tägliche Push (push_ab = Datum − 2 Tage).
+const WICHTIG_VORLAUF_TAGE = 2;
+const hatFlagge = (a) => a.prioritaet === "wichtig";
+const wichtigAb = (a) => (a.faellig ? isoAusDatum(new Date(new Date(`${a.faellig}T12:00`).getTime() - WICHTIG_VORLAUF_TAGE * 86400000)) : null);
+const istWichtig = (a) => hatFlagge(a) && (!a.faellig || wichtigAb(a) <= heuteIso());
+const wartetAufWichtig = (a) => hatFlagge(a) && !a.erledigt && !istWichtig(a);
+const wichtigAbText = (a) => {
+  const ab = wichtigAb(a);
+  const d = new Date(`${ab}T12:00`);
+  const nah = ab <= isoAusDatum(tagPlus(new Date(), 6));
+  return `ab ${nah ? `${["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][d.getDay()]}.` : `${d.getDate()}.${d.getMonth() + 1}.`} wichtig`;
+};
+const prioKlasse = (a) => (hatFlagge(a) && !istWichtig(a) ? "normal" : a.prioritaet || "normal");
+const prioRang = (a) => (hatFlagge(a) ? (istWichtig(a) ? 0 : 1) : ({ normal: 1, spaeter: 2 })[a.prioritaet] ?? 1);
 const istNachfass = (a) => Boolean(a.nachfass_auftrag_id);
 const wichtigeAufgaben = () => daten.aufgaben.filter((a) => !a.erledigt && istWichtig(a)).sort(nachFaelligkeit);
 
@@ -1045,7 +1058,7 @@ function aufgabeZeile(a) {
   const zusatz = !a.erledigt && istNachfass(a) ? nachfassZusatz(a) : "";
   const unter = [
     k ? `<a class="aufgabe__kunde" href="#kunde/${esc(k.id)}">${esc(k.name)}</a>${istNachfass(a) ? ` ${anredeMarke(k)}` : ""}` : "",
-    a.faellig ? `${ueberfaellig ? '<span class="minus">überfällig · </span>' : ""}${esc(fmtTag.format(new Date(`${a.faellig}T12:00`)))}${esc(aufgabeZeitText(a))}${a.erledigt ? "" : ` ${fristChip(a.faellig)}`}` : "",
+    a.faellig ? `${ueberfaellig ? '<span class="minus">überfällig · </span>' : ""}${esc(fmtTag.format(new Date(`${a.faellig}T12:00`)))}${esc(aufgabeZeitText(a))}${a.erledigt ? "" : wartetAufWichtig(a) ? ` <span class="frist frist--wartet">${esc(wichtigAbText(a))}</span>` : ` ${fristChip(a.faellig)}`}` : "",
     zusatz ? `<span class="aufgabe__zusatz">${esc(zusatz)}</span>` : "",
   ].filter(Boolean).join(" · ");
   const nachfassKnoepfe = !a.erledigt && istNachfass(a) && k && waNummer(k.telefon)
@@ -1053,7 +1066,7 @@ function aufgabeZeile(a) {
         <a class="knopf knopf--klein knopf--wa" href="${esc(waLink(k, nachfassText(k, nachfassAuftrag(a))))}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.whatsapp}</svg>WhatsApp schreiben</a>
         <button class="knopf knopf--klein knopf--leise" type="button" data-aktion="kontakt-speichern" data-id="${esc(k.id)}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.kontaktNeu}</svg>Kontakt speichern</button>
       </span>` : "";
-  return `<li class="aufgabe aufgabe--${esc(a.prioritaet || "normal")}${a.erledigt ? " erledigt" : ""}">
+  return `<li class="aufgabe aufgabe--${esc(prioKlasse(a))}${a.erledigt ? " erledigt" : ""}">
     <button class="haken" type="button" role="checkbox" aria-checked="${a.erledigt}" aria-label="${esc(a.titel)} erledigt" data-aktion="aufgabe-haken" data-id="${esc(a.id)}">
       <svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" /></svg>
     </button>
@@ -1062,7 +1075,7 @@ function aufgabeZeile(a) {
       ${unter ? `<span class="zeile__unter">${unter}</span>` : ""}
       ${nachfassKnoepfe}
     </span>
-    ${a.erledigt ? "" : `<button class="flagge" type="button" aria-pressed="${istWichtig(a)}" aria-label="${istWichtig(a) ? "Nicht mehr wichtig" : "Als wichtig markieren"}" title="${istWichtig(a) ? "Wichtig – nochmal tippen zum Entfernen" : "Als wichtig markieren"}" data-aktion="aufgabe-wichtig" data-id="${esc(a.id)}"><svg viewBox="0 0 24 24">${ICONS.flagge}</svg></button>`}
+    ${a.erledigt ? "" : `<button class="flagge" type="button" aria-pressed="${hatFlagge(a)}" aria-label="${hatFlagge(a) ? "Nicht mehr wichtig" : "Als wichtig markieren"}" title="${hatFlagge(a) ? "Wichtig – nochmal tippen zum Entfernen" : "Als wichtig markieren"}" data-aktion="aufgabe-wichtig" data-id="${esc(a.id)}"><svg viewBox="0 0 24 24">${ICONS.flagge}</svg></button>`}
     ${personMarke(a.zustaendig)}
     ${a.erledigt ? "" : outpostKnopf(a)}
   </li>`;
@@ -3283,7 +3296,9 @@ function dialogAufgabe(a = {}) {
         prioritaet: PRIO_LISTE.some((p) => p.id === f.prioritaet) ? f.prioritaet : "normal",
       };
       // Neu wichtig → täglicher Push ab heute 16 Uhr (oder ab morgen, wenn die Zeit schon vorbei ist)
-      if (zeile.prioritaet === "wichtig" && (!istWichtig(a) || zeile.uhrzeit !== (a.uhrzeit || "").slice(0, 5))) zeile.push_tag = tagesPushStart(zeile.uhrzeit);
+      if (zeile.prioritaet === "wichtig" && (!hatFlagge(a) || zeile.uhrzeit !== (a.uhrzeit || "").slice(0, 5))) zeile.push_tag = tagesPushStart(zeile.uhrzeit);
+      // v28: täglicher Push erst ab „wichtig“ (Datum − 2 Tage); Nachfass-Aufgaben behalten ihr push_ab
+      if (zeile.prioritaet === "wichtig" && !a.taeglich) zeile.push_ab = wichtigAb(zeile);
       // Zeit geändert → Erinnerung darf noch einmal kommen
       if (!a.id || zeile.faellig !== a.faellig || zeile.uhrzeit !== (a.uhrzeit || "").slice(0, 5) || zeile.vorlauf_min !== (a.vorlauf_min ?? 0) || zeile.zustaendig !== a.zustaendig) zeile.push_gesendet = null;
       if (a.id) await aendern("aufgaben", a.id, zeile);
@@ -4052,10 +4067,10 @@ document.addEventListener("click", async (event) => {
     }
     case "aufgabe-wichtig": {
       const a = finden("aufgaben");
-      const wichtig = !istWichtig(a);
-      await aendern("aufgaben", id, { prioritaet: wichtig ? "wichtig" : "normal", ...(wichtig ? { push_tag: tagesPushStart(a.uhrzeit) } : {}) });
+      const wichtig = !hatFlagge(a);
+      await aendern("aufgaben", id, { prioritaet: wichtig ? "wichtig" : "normal", ...(wichtig ? { push_tag: tagesPushStart(a.uhrzeit), ...(a.taeglich ? {} : { push_ab: wichtigAb(a) }) } : {}) });
       if (typeof hVibe === "function") hVibe(8);
-      zeigeToast(wichtig ? "Als wichtig markiert" : "Nicht mehr wichtig");
+      zeigeToast(wichtig ? (a.faellig && wichtigAb(a) > heuteIso() ? `Markiert – ${wichtigAbText(a)}` : "Als wichtig markiert") : "Nicht mehr wichtig");
       return render();
     }
     case "kontakt-speichern":

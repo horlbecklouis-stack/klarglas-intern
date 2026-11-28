@@ -323,11 +323,11 @@ function hAufgabeZeile(a, { wischen = false } = {}) {
   const unter = [
     k ? `<b class="h-aufgabe__kunde">${esc(k.name)}</b>` : "",
     !a.faellig ? "" : datumText
-      ? `<span class="${ueberfaellig ? "h-minus" : ""}">${datumText}${esc(aufgabeZeitText(a))}</span>${tage !== null ? ` ${fristChip(a.faellig)}` : ""}`
+      ? `<span class="${ueberfaellig ? "h-minus" : ""}">${datumText}${esc(aufgabeZeitText(a))}</span>${wartetAufWichtig(a) ? ` <span class="frist frist--wartet">${esc(wichtigAbText(a))}</span>` : tage !== null ? ` ${fristChip(a.faellig)}` : ""}`
       : `${fristChip(a.faellig)}${esc(aufgabeZeitText(a))}`,
   ].filter(Boolean).join(" · ");
   const art = { Louis: "louis", Lukas: "lukas" }[a.zustaendig] || "beide";
-  const prio = PRIO_LISTE.some((p) => p.id === a.prioritaet) ? a.prioritaet : "normal";
+  const prio = PRIO_LISTE.some((p) => p.id === a.prioritaet) ? prioKlasse(a) : "normal";
   const nf = istNachfass(a) && !a.erledigt && k;
   const zusatz = nf ? nachfassZusatz(a) : "";
   const wa = nf ? waLink(k, nachfassText(k, nachfassAuftrag(a))) : "";
@@ -342,7 +342,7 @@ function hAufgabeZeile(a, { wischen = false } = {}) {
       ${unter ? `<span class="h-zeile__unter">${unter}</span>` : ""}
       ${zusatz ? `<span class="h-aufgabe__zusatz">${esc(zusatz)}</span>` : ""}
     </button>
-    ${a.erledigt ? "" : `<button class="h-flagge" type="button" aria-pressed="${prio === "wichtig"}" aria-label="Wichtig" data-aktion="aufgabe-wichtig" data-id="${esc(a.id)}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.flagge}</svg></button>`}
+    ${a.erledigt ? "" : `<button class="h-flagge" type="button" aria-pressed="${hatFlagge(a)}" aria-label="Wichtig" data-aktion="aufgabe-wichtig" data-id="${esc(a.id)}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.flagge}</svg></button>`}
     <span class="h-person h-person--${art}">${esc(a.zustaendig || "Beide")}</span>
   </div>${knoepfe}`;
   return wischen ? hWisch(vorne, hWischKnopf("rot", "Löschen", H_ICON.muell, { attr: `data-h="aufgabe-loeschen" data-id="${esc(a.id)}"` })) : vorne;
