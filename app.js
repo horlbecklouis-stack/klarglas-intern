@@ -1045,7 +1045,7 @@ function aufgabeZeile(a) {
   const zusatz = !a.erledigt && istNachfass(a) ? nachfassZusatz(a) : "";
   const unter = [
     k ? `<a class="aufgabe__kunde" href="#kunde/${esc(k.id)}">${esc(k.name)}</a>${istNachfass(a) ? ` ${anredeMarke(k)}` : ""}` : "",
-    a.faellig ? `${ueberfaellig ? '<span class="minus">überfällig · </span>' : ""}${esc(fmtTag.format(new Date(`${a.faellig}T12:00`)))}${esc(aufgabeZeitText(a))}` : "",
+    a.faellig ? `${ueberfaellig ? '<span class="minus">überfällig · </span>' : ""}${esc(fmtTag.format(new Date(`${a.faellig}T12:00`)))}${esc(aufgabeZeitText(a))}${a.erledigt ? "" : ` ${fristChip(a.faellig)}`}` : "",
     zusatz ? `<span class="aufgabe__zusatz">${esc(zusatz)}</span>` : "",
   ].filter(Boolean).join(" · ");
   const nachfassKnoepfe = !a.erledigt && istNachfass(a) && k && waNummer(k.telefon)
@@ -1245,6 +1245,8 @@ function ansichtUebersicht() {
         <button class="knopf knopf--voll" type="button" data-aktion="auftrag-neu">Auftrag anlegen</button>
       </div>
     </div>
+
+    ${naechsteFristKarte()}
 
     ${wichtigStreifen()}
 

@@ -15,6 +15,7 @@ const H = {
   stapel: [], // wohin „Zurück“ führt
   ohneAnimation: false,
   erledigtOffen: false,
+  zeitOffen: false, // Zeitstrahl Weihnachtskarten aufgeklappt
 };
 
 const H_TABS = ["uebersicht", "kunden", "kalender", "geld", "aufgaben"];
@@ -217,6 +218,7 @@ function hUebersicht() {
 
   return `
     ${hKopf({ titel: `Hallo ${ich}`, ueber: esc(fmtTagLang.format(jetzt)) })}
+    ${naechsteFristKarte()}
     ${hAbschnitt(wichtig.length ? `Wichtig <span class="h-zahl h-zahl--rot">${wichtig.length}</span>` : "", wichtig.map((a) => hAufgabeZeile(a)).join(""), { klasse: "h-abschnitt--wichtig", farbe: "#c81e1e", icon: ICONS.flagge })}
     ${zahlen}
     ${hAbschnitt(anfragen.length ? `Neue Anfragen <span class="h-zahl">${anfragen.length}</span>` : "", anfragenHtml, { klasse: "h-abschnitt--anfragen", farbe: "#5B3FD6", icon: H_ICON.post })}
@@ -240,14 +242,89 @@ function hTerminZeile(a) {
   });
 }
 
+/* ===================== Fristen (v27): Countdown, Karte, Zeitstrahl ===================== */
+
+// Tage von heute bis zu einem Tag (YYYY-MM-DD); negativ = vorbei
+function fristTage(iso) {
+  return Math.round((new Date(`${iso}T12:00`) - new Date(`${heuteIso()}T12:00`)) / 86400000);
+}
+const fristText = (n) => (n < 0 ? "überfällig" : n === 0 ? "heute" : n === 1 ? "morgen" : `in ${n} Tagen`);
+// rot = heute, morgen oder überfällig · gelb = diese Woche · grau = später
+const fristStufe = (n) => (n <= 1 ? "rot" : n <= 7 ? "gelb" : "grau");
+const fristChip = (iso) => {
+  const n = fristTage(iso);
+  return `<span class="frist frist--${fristStufe(n)}">${fristText(n)}</span>`;
+};
+
+// Karte „Nächste Deadline“ oben auf der Übersicht (Handy und Computer)
+function naechsteFristKarte() {
+  const heute = heuteIso();
+  const offen = sichtbareAufgaben()
+    .filter((a) => !a.erledigt && a.faellig && a.faellig >= heute)
+    .sort((a, b) => (a.faellig < b.faellig ? -1 : a.faellig > b.faellig ? 1 : prioRang(a) - prioRang(b) || `${a.uhrzeit || "99"}`.localeCompare(`${b.uhrzeit || "99"}`)));
+  if (!offen.length) return "";
+  const erste = offen[0];
+  const amTag = offen.filter((a) => a.faellig === erste.faellig);
+  const n = fristTage(erste.faellig);
+  const danach = offen.find((a) => a.faellig > erste.faellig);
+  const tagText = (iso) => fmtTag.format(new Date(`${iso}T12:00`));
+  const zahl = n === 0 ? "Heute" : `${n} <small>${n === 1 ? "Tag" : "Tage"}</small>`;
+  return `<a class="frist-karte frist-karte--${fristStufe(n)}" href="#aufgaben" aria-label="Nächste Deadline in ${esc(fristText(n))}: ${esc(erste.titel)}">
+    <span class="frist-karte__ueber">Nächste Deadline</span>
+    <span class="frist-karte__zahl">${zahl}</span>
+    <span class="frist-karte__was">${esc(erste.titel)}</span>
+    <span class="frist-karte__unter">${esc(tagText(erste.faellig))}${amTag.length > 1 ? ` · +${amTag.length - 1} weitere am selben Tag` : ""}${erste.zustaendig ? ` · ${esc(erste.zustaendig)}` : ""}</span>
+    ${danach ? `<span class="frist-karte__dann">Danach: ${esc(tagText(danach.faellig))} · ${esc(danach.titel)}</span>` : ""}
+  </a>`;
+}
+
+// Zeitstrahl für die Weihnachtskarten (nur Handy, eingeklappt auf der Aufgaben-Seite)
+const KARTEN_VON = "2026-11-30";
+const KARTEN_BIS = "2026-12-15";
+const KARTEN_RE = /weihnachtskarte|(^|\s)karten(\s|$)|gutschein|briefmark|adressen abfahren|ausdruck/i;
+
+function kartenZeitstrahl() {
+  const liste = daten.aufgaben
+    .filter((a) => a.faellig && a.faellig >= KARTEN_VON && a.faellig <= KARTEN_BIS && KARTEN_RE.test(a.titel || ""))
+    .sort((a, b) => (a.faellig < b.faellig ? -1 : a.faellig > b.faellig ? 1 : 0));
+  if (liste.length < 2) return "";
+  const fertig = liste.filter((a) => a.erledigt).length;
+  if (fertig === liste.length && heuteIso() > KARTEN_BIS) return "";
+  const rest = fristTage(KARTEN_BIS);
+  const info = fertig === liste.length ? "alles erledigt" : `${fertig} von ${liste.length} erledigt${rest >= 0 ? ` · ${fristText(rest)}` : ""}`;
+  const schlussTag = liste[liste.length - 1].faellig;
+  const punkte = liste.map((a) => {
+    const d = new Date(`${a.faellig}T12:00`);
+    const n = fristTage(a.faellig);
+    const art = { Louis: "louis", Lukas: "lukas" }[a.zustaendig] || "beide";
+    return `<li class="zs${a.erledigt ? " zs--erledigt" : ""}${a.faellig === schlussTag ? " zs--ziel" : ""}">
+      <span class="zs__datum"><b>${esc(String(d.getDate()).padStart(2, "0"))}.${esc(String(d.getMonth() + 1).padStart(2, "0"))}.</b><small>${esc(new Intl.DateTimeFormat("de-DE", { weekday: "short" }).format(d).replace(".", ""))}</small></span>
+      <span class="zs__punkt frist--${a.erledigt ? "grau" : fristStufe(n)}" aria-hidden="true"></span>
+      <button class="zs__text" type="button" data-aktion="aufgabe-bearbeiten" data-id="${esc(a.id)}">
+        <span class="zs__titel">${esc(a.titel)}</span>
+        <span class="zs__meta"><span class="h-person h-person--${art}">${esc(a.zustaendig || "Beide")}</span>${a.erledigt ? ' <span class="zs__fertig">erledigt</span>' : fristChip(a.faellig)}</span>
+      </button>
+    </li>`;
+  }).join("");
+  return `<details class="h-zeit" data-h-zeit${H.zeitOffen ? " open" : ""}>
+    <summary><span class="h-zeit__titel">Weihnachtskarten</span><span class="h-zeit__info">${info}</span></summary>
+    <ol class="h-zeit__liste">${punkte}</ol>
+  </details>`;
+}
+
 /* ===================== Aufgaben (wie Erinnerungen) ===================== */
 
 function hAufgabeZeile(a, { wischen = false } = {}) {
   const k = a.kunde_id ? kundeVon(a.kunde_id) : null;
   const ueberfaellig = a.faellig && !a.erledigt && a.faellig < heuteIso();
+  const tage = a.faellig && !a.erledigt ? fristTage(a.faellig) : null;
+  // heute/morgen steht schon im Chip; ab übermorgen Datum + Chip
+  const datumText = a.faellig && (tage === null || tage >= 2 || tage < 0) ? esc(hTagText(new Date(`${a.faellig}T12:00`))) : "";
   const unter = [
     k ? `<b class="h-aufgabe__kunde">${esc(k.name)}</b>` : "",
-    a.faellig ? `<span class="${ueberfaellig ? "h-minus" : ""}">${esc(hTagText(new Date(`${a.faellig}T12:00`)))}${esc(aufgabeZeitText(a))}</span>` : "",
+    !a.faellig ? "" : datumText
+      ? `<span class="${ueberfaellig ? "h-minus" : ""}">${datumText}${esc(aufgabeZeitText(a))}</span>${tage !== null ? ` ${fristChip(a.faellig)}` : ""}`
+      : `${fristChip(a.faellig)}${esc(aufgabeZeitText(a))}`,
   ].filter(Boolean).join(" · ");
   const art = { Louis: "louis", Lukas: "lukas" }[a.zustaendig] || "beide";
   const prio = PRIO_LISTE.some((p) => p.id === a.prioritaet) ? a.prioritaet : "normal";
@@ -285,6 +362,7 @@ function hAufgaben() {
     <div class="h-wer" role="group" aria-label="Aufgaben filtern">
       ${filter.map(([wert, name, kurz, farbe]) => `<button class="h-wer__kachel" type="button" style="--c:${farbe}" aria-pressed="${f === wert}" data-aktion="aufgaben-filter" data-wert="${wert}"><em aria-hidden="true">${kurz}</em><span>${name}</span><b>${zaehl(wert)}</b></button>`).join("")}
     </div>
+    ${kartenZeitstrahl()}
     ${aufgabenAbschnitte(offen).map(([titel, l]) => `<section class="h-abschnitt${titel === "Wichtig" ? " h-abschnitt--wichtig" : ""}">
       <div class="h-abschnitt__kopf"><h2>${titel}</h2><span class="h-leise">${l.length}</span></div>
       <div class="h-gruppe h-gruppe--aufgaben">${l.map((a) => hAufgabeZeile(a, { wischen: true })).join("")}</div>
@@ -1565,6 +1643,7 @@ function hEinrichten() {
   // Eingeklappte „Erledigt“-Liste merkt sich ihren Zustand
   document.addEventListener("toggle", (e) => {
     if (e.target.matches?.("[data-h-erledigt]")) H.erledigtOffen = e.target.open;
+    if (e.target.matches?.("[data-h-zeit]")) H.zeitOffen = e.target.open;
   }, true);
   // Escape schließt Panel und FAB
   document.addEventListener("keydown", (e) => {
